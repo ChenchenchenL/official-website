@@ -1,0 +1,10 @@
+/workspace/src/main/java/com/company/officialwebsite/OfficialWebsiteApplication.java
+/workspace/src/main/java/com/company/officialwebsite/common/enums/ErrorCode.java
+/workspace/src/main/java/com/company/officialwebsite/common/exception/BusinessException.java
+/workspace/src/main/java/com/company/officialwebsite/common/exception/GlobalExceptionHandler.java
+/workspace/src/main/java/com/company/officialwebsite/common/response/ApiResponse.java
+/workspace/src/main/java/com/company/officialwebsite/common/response/FieldErrorDetail.java
+/workspace/src/main/java/com/company/officialwebsite/common/response/ValidationErrorData.java
+/workspace/src/main/java/com/company/officialwebsite/common/trace/TraceConstants.java
+/workspace/src/main/java/com/company/officialwebsite/common/trace/TraceContext.java
+/workspace/src/main/java/com/company/officialwebsite/common/trace/TraceIdFilter.java

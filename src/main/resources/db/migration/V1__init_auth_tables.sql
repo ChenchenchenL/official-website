@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS sys_user (
 CREATE INDEX IF NOT EXISTS idx_sys_user_role_code_deleted_marker ON sys_user (role_code, deleted_marker);
 CREATE INDEX IF NOT EXISTS idx_sys_user_status_deleted_marker ON sys_user (status, deleted_marker);
 
+UPDATE sys_user
+SET role_code = 'ADMINISTRATOR'
+WHERE deleted_marker = 0
+  AND role_code <> 'ADMINISTRATOR';
+
 INSERT INTO sys_user (
     username,
     password_hash,

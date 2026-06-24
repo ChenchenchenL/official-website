@@ -81,7 +81,7 @@ Applicable scope: the official website Admin system, Portal APIs, management API
 ## 7. Permission and Security Review
 
 * **Admin authentication**: Except for whitelisted endpoints such as login, captcha, and health checks, every `/admin/api/**` endpoint must require authentication.
-* **Role authorization**: Admin endpoints must authorize under the three-role model of `Administrator`, `Content Editor`, and `Lead Follow-up Operator`. Content Editors may logically delete content within their scope. Account management, system configuration, physical delete, batch dangerous delete, export, and similar high-risk actions are administrator-only by default. Lead Follow-up Operators may view single-lead full contact details and update follow-up data.
+* **Role authorization**: Admin endpoints must authorize under the `Administrator` model. Content maintenance, account management, system configuration, delete operations, export, lead handling, and similar high-risk actions are administrator-only by default.
 * **Resource authorization**: Detail, update, delete, and export endpoints must verify both resource existence and current-user permission.
 * **Sensitive data**: Phone numbers, email addresses, customer messages, tokens, secrets, and passwords must not be exposed in plaintext in responses or logs.
 * **Password safety**: Passwords must use BCrypt, Argon2, or another secure hash algorithm. MD5, SHA1, and plaintext are forbidden.
@@ -181,7 +181,7 @@ Severity definitions:
 ## 14. Review Completion Checklist
 
 * Is the change confirmed to match the requirement document and business flow?
-* Have Admin API authentication and `Administrator` / `Content Editor` / `Lead Follow-up Operator` authorization been checked?
+* Have Admin API authentication and `Administrator` authorization been checked?
 * Have Portal queries been checked to ensure they return only publicly visible data?
 * Have layering responsibilities among Controller, Application Service, Service, and Mapper been checked?
 * Have DTO/VO isolation and unified response structure been checked?

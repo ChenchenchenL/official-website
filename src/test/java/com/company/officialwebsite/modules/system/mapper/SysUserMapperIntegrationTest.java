@@ -162,7 +162,7 @@ class SysUserMapperIntegrationTest {
         entity.setUsername(uniqueToken);
         entity.setPasswordHash("$2a$10$FIrWp7hmOOezCwXWiaurve0KNTc6pRBSWjIAff0HgXOTUfDxuX9NK");
         entity.setDisplayName("测试用户-" + scenario);
-        entity.setRoleCode(RoleCode.CONTENT_EDITOR.getCode());
+        entity.setRoleCode(RoleCode.ADMINISTRATOR.getCode());
         entity.setStatus(UserStatus.ENABLED.getCode());
         entity.setLastLoginAt(null);
         return entity;

@@ -23,6 +23,8 @@ public class OfficialProperties {
 
     private final Json json = new Json();
 
+    private final Storage storage = new Storage();
+
     public Cache getCache() {
         return cache;
     }
@@ -47,9 +49,10 @@ public class OfficialProperties {
         return json;
     }
 
-    /**
-     * Cache：统一约束 Portal 与通用缓存的前缀和过期时间默认值。
-     */
+    public Storage getStorage() {
+        return storage;
+    }
+
     public static class Cache {
 
         private String keyPrefix = "official";
@@ -83,9 +86,6 @@ public class OfficialProperties {
         }
     }
 
-    /**
-     * Cors：分别管理 Admin 与 Portal 的跨域策略，避免公开接口与管理端共用错误白名单。
-     */
     public static class Cors {
 
         private final Scope admin = new Scope();
@@ -101,9 +101,6 @@ public class OfficialProperties {
         }
     }
 
-    /**
-     * Scope：声明单个跨域作用域下的允许来源与预检缓存时间。
-     */
     public static class Scope {
 
         private List<String> allowedOrigins = new ArrayList<>();
@@ -137,9 +134,6 @@ public class OfficialProperties {
         }
     }
 
-    /**
-     * Async：统一管理应用内异步任务执行器的线程池参数。
-     */
     public static class Async {
 
         private int corePoolSize = 2;
@@ -203,9 +197,6 @@ public class OfficialProperties {
         }
     }
 
-    /**
-     * Scheduler：统一管理应用内调度线程池，供延迟二删和周期任务复用。
-     */
     public static class Scheduler {
 
         private int poolSize = 2;
@@ -239,9 +230,6 @@ public class OfficialProperties {
         }
     }
 
-    /**
-     * Security：统一管理 Cookie Session 场景下的安全相关基础配置。
-     */
     public static class Security {
 
         private String csrfHeaderName = "X-XSRF-TOKEN";
@@ -285,9 +273,6 @@ public class OfficialProperties {
         }
     }
 
-    /**
-     * Json：统一管理接口序列化风格，避免各模块各自改写 ObjectMapper。
-     */
     public static class Json {
 
         private boolean writeLongAsString = false;
@@ -298,6 +283,39 @@ public class OfficialProperties {
 
         public void setWriteLongAsString(boolean writeLongAsString) {
             this.writeLongAsString = writeLongAsString;
+        }
+    }
+
+    public static class Storage {
+
+        private String localRootDir = System.getProperty("java.io.tmpdir") + "/official-website/media";
+
+        private String publicUrlPrefix = "/media/public/";
+
+        private long maxImageSizeBytes = 2 * 1024 * 1024L;
+
+        public String getLocalRootDir() {
+            return localRootDir;
+        }
+
+        public void setLocalRootDir(String localRootDir) {
+            this.localRootDir = localRootDir;
+        }
+
+        public String getPublicUrlPrefix() {
+            return publicUrlPrefix;
+        }
+
+        public void setPublicUrlPrefix(String publicUrlPrefix) {
+            this.publicUrlPrefix = publicUrlPrefix;
+        }
+
+        public long getMaxImageSizeBytes() {
+            return maxImageSizeBytes;
+        }
+
+        public void setMaxImageSizeBytes(long maxImageSizeBytes) {
+            this.maxImageSizeBytes = maxImageSizeBytes;
         }
     }
 }

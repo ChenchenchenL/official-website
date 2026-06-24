@@ -1,0 +1,91 @@
+name: official-website
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: official-website-mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${OW_DB_NAME:-official_website}
+      MYSQL_USER: ${OW_DB_USERNAME:-official_website}
+      MYSQL_PASSWORD: ${OW_DB_PASSWORD:-official_website_local}
+      MYSQL_ROOT_PASSWORD: ${OW_DB_ROOT_PASSWORD:-official_website_root_local}
+    ports:
+      - "${OW_MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: official-website-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${OW_REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: official-website-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 8080
+      OW_DB_HOST: mysql
+      OW_DB_PORT: 3306
+      OW_DB_NAME: ${OW_DB_NAME:-official_website}
+      OW_DB_USERNAME: ${OW_DB_USERNAME:-official_website}
+      OW_DB_PASSWORD: ${OW_DB_PASSWORD:-official_website_local}
+      OW_REDIS_HOST: redis
+      OW_REDIS_PORT: 6379
+      OW_REDIS_PASSWORD: ${OW_REDIS_PASSWORD:-}
+      OW_REDIS_DATABASE: 0
+      OW_MEDIA_ROOT_DIR: /var/lib/official-website/media
+      OW_MEDIA_PUBLIC_URL_PREFIX: /media/public/
+    ports:
+      - "${OW_APP_HOST_PORT:-8080}:8080"
+    volumes:
+      - media-data:/var/lib/official-website/media
+
+  maven:
+    image: maven:3.9.9-eclipse-temurin-17
+    profiles: ["tools"]
+    working_dir: /workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      MAVEN_OPTS: -Dmaven.repo.local=/root/.m2/repository
+    volumes:
+      - ./:/workspace
+      - ./.mvn/settings-docker.xml:/root/.m2/settings.xml:ro
+      - maven-cache:/root/.m2/repository
+
+volumes:
+  mysql-data:
+  redis-data:
+  media-data:
+  maven-cache:

@@ -7,7 +7,7 @@ Applicable scope: the Admin system, Portal public APIs, media upload service, cu
 ## 1. General Principles
 
 * **Deny by default**: Admin APIs, management functions, and sensitive data are inaccessible by default and require explicit authorization.
-* **Least privilege**: Admin accounts, APIs, database accounts, and object storage keys must receive only the minimum privilege needed to perform their tasks. The current business model uses three roles: `Administrator`, `Content Editor`, and `Lead Follow-up Operator`.
+* **Least privilege**: Admin accounts, APIs, database accounts, and object storage keys must receive only the minimum privilege needed to perform their tasks. The current business model uses a single backend role: `Administrator`.
 * **Defense in depth**: Authentication, authorization, input validation, data permissions, audit logs, rate limiting, and alerting must be used together. Do not rely on a single line of defense.
 * **Sensitive data protection first**: Phone numbers, email addresses, customer messages, tokens, secrets, passwords, and similar data must each be handled properly in storage, transport, display, and logging.
 * **Security events must be traceable**: Login, logout, failed login, permission denial, export, sensitive-data view, configuration change, show/hide, and similar actions must be auditable.
@@ -30,9 +30,9 @@ Applicable scope: the Admin system, Portal public APIs, media upload service, cu
 ## 3. Authorization and Permission Control Rules
 
 * **Admin endpoints must be authorized**: Authentication alone is not enough. Every Admin endpoint must check whether the current role is allowed to perform the requested action.
-* **Role model**: The current stage defines `Administrator`, `Content Editor`, and `Lead Follow-up Operator`. Administrators handle accounts, system configuration, manual cache refresh, batch export, and other high-risk functions. Content Editors maintain products, cases, news, and similar content. Lead Follow-up Operators process customer inquiry leads.
-* **Content delete permissions**: Content Editors may hide or logically delete content within their maintenance scope. Physical delete, audit-log delete, system configuration delete, account delete, and other system-level dangerous delete actions are administrator-only.
-* **Lead permissions**: Lead Follow-up Operators may view full contact details for a single lead and update processing status and notes. Batch export, batch delete, and permission configuration for leads are administrator-only.
+* **Role model**: The current stage defines only `Administrator`. All backend management actions, including content maintenance, system configuration, lead handling, export, and other high-risk functions, are administrator operations.
+* **Content delete permissions**: Content hide, logical delete, physical delete, system configuration delete, account delete, audit-log delete, and other dangerous backend actions are administrator-only.
+* **Lead permissions**: Viewing full contact details for a single lead, updating processing status and notes, batch export, batch delete, and lead-related permission configuration are administrator-only.
 * **Avoid overdesign**: At the current stage, a full many-to-many RBAC model of users, roles, and permissions is not mandatory. If more roles or a permission matrix are introduced later, the PRD and migration design must be updated first.
 * **Do not bypass through hardcoded identity**: Business code must not hardcode checks such as username equals `admin` to skip authorization. Stable role codes may be used to express administrator, content editor, and lead follow-up operator.
 * **Backend check is mandatory**: The frontend may hide buttons, but the backend must perform role checks independently.
@@ -45,7 +45,7 @@ Applicable scope: the Admin system, Portal public APIs, media upload service, cu
 
 * **Lead data is sensitive**: Customer name, phone number, email, company, title, and message content must all be treated as sensitive data.
 * **Masked by default**: List views must mask phone numbers and email addresses by default, such as `138****1234` and `a***@example.com`.
-* **Authorization for full details**: Lead Follow-up Operators and Administrators may view full phone number, email, and message details for a single lead, and the system must record viewer, time, lead ID, and source. Content Editors must not view full contact details by default.
+* **Authorization for full details**: Only Administrators may view full phone number, email, and message details for a single lead, and the system must record viewer, time, lead ID, and source.
 * **Controlled export**: Lead export is administrator-only by default. It must be audited, support scoped filtering, and must not allow unconditional full-table export.
 * **Mask logs**: Logs must not print full phone numbers, email addresses, tokens, passwords, verification codes, cookies, or `Authorization` headers.
 * **Database field protection**: Passwords, tokens, secrets, verification codes, and similar data must not be stored in plaintext. Sensitive configuration that must be stored should be encrypted or managed through a secret management system.
@@ -183,20 +183,20 @@ Applicable scope: the Admin system, Portal public APIs, media upload service, cu
 * Do not store uploaded files in executable directories.
 * Do not expose unauthenticated Swagger, sensitive Actuator endpoints, or detailed error pages in production.
 * Do not log `Authorization`, cookies, passwords, full phone numbers, or full email addresses.
-* Do not allow Content Editors, Lead Follow-up Operators, or unauthorized accounts to export lead data. Lead export is administrator-only by default.
+* Do not allow unauthorized accounts to export lead data. Lead export is administrator-only by default.
 * Do not deploy production with default accounts or default passwords.
 
 ---
 
 ## 17. Pre-Submission Security Checklist
 
-* Are all Admin endpoints authenticated and authorized under the `Administrator` / `Content Editor` / `Lead Follow-up Operator` model?
+* Are all Admin endpoints authenticated and authorized under the `Administrator` model?
 * Can the current user access only data within the authorized scope?
 * Do request DTOs complete baseline validation, and do Services complete business validation?
 * Does SQL use parameter binding and avoid `${}` for external input?
 * Is rich text sanitized through an allowlist, and is plain text escaped on output?
 * Do upload endpoints validate extension, MIME, size, content signature, and storage path?
-* Are sensitive fields masked by default? Is single-lead full-detail access by Lead Follow-up Operators audited? Is export admin-only and audited?
+* Are sensitive fields masked by default? Is single-lead full-detail access by Administrators audited? Is export admin-only and audited?
 * Do critical operations write audit logs and change snapshots?
 * Is production configuration free of default passwords, debug mode, and sensitive-data leakage?
 * Do logs and error responses avoid exposing sensitive data and internal implementation details?

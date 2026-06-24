@@ -24,6 +24,10 @@ spring:
       timeout: 3s
 
 official:
+  storage:
+    local-root-dir: /tmp/official-website-test/media
+    public-url-prefix: /media/public/
+    max-image-size-bytes: 2097152
   cache:
     key-prefix: official
     default-ttl: 10m

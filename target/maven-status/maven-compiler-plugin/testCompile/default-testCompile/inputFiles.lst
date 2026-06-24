@@ -5,6 +5,15 @@
 /workspace/src/test/java/com/company/officialwebsite/common/config/SchedulingConfigurationTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/enums/ErrorCodeTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/response/ApiResponseTest.java
+/workspace/src/test/java/com/company/officialwebsite/common/utils/StringFieldUtilsTest.java
 /workspace/src/test/java/com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/media/controller/AdminMediaAssetControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/HomeBannerControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/HomeMetricCardControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/HonorControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/NavigationMenuControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/SiteConfigControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/system/controller/AdminAuthControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/system/mapper/SysUserMapperIntegrationTest.java
+/workspace/src/test/java/com/company/officialwebsite/support/BaseAdminControllerIntegrationTest.java
+/workspace/src/test/java/com/company/officialwebsite/support/TestConstants.java

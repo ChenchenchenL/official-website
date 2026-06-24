@@ -98,7 +98,7 @@ The following functionality must have automated test coverage:
 * **Product module**: Categories, tags, product show/hide, product detail features, and quantified indicators.
 * **Case module**: Industry relation, case show/hide, rich text, cover image, and recommended state.
 * **News module**: Category filtering, publish-time ordering, pinned items, recommended items, and SEO fields.
-* **Lead module**: Form validation, basic anti-abuse, processing status, masked display, single-lead full-detail access for Lead Follow-up Operators, and admin-only export restriction.
+* **Lead module**: Form validation, basic anti-abuse, processing status, masked display, single-lead full-detail access for Administrators, and admin-only export restriction.
 * **Media module**: File type restriction, size restriction, path generation, metadata persistence, bind, unbind, rich-text media reference lists, and failure cleanup.
 * **Audit logs**: Show/hide, delete, export, sensitive-data view, and role change.
 * **Cache synchronization**: After Admin updates, related Portal cache must be invalidated only after transaction commit, and TTL plus delayed second-delete must be verified. On transaction rollback, cache must not be invalidated incorrectly or written with dirty data.
@@ -152,12 +152,12 @@ The following functionality must have automated test coverage:
 ## 9. Security Testing Rules
 
 * **Authentication tests**: Admin APIs must cover rejection of unauthenticated access.
-* **Authorization tests**: For high-risk endpoints, tests must cover both allowed and denied scenarios for Administrator, Content Editor, and Lead Follow-up Operator.
+* **Authorization tests**: For high-risk endpoints, tests must cover both allowed and denied scenarios for Administrator and unauthenticated or unauthorized callers.
 * **Privilege escalation tests**: Scenarios where a user modifies IDs to access other users' or unauthorized resources must be tested.
 * **Input attack tests**: SQL injection fragments, XSS fragments, overly long strings, invalid enums, and invalid links must be tested.
 * **Upload attack tests**: Forged MIME, double extensions, oversized files, script files, and path traversal filenames must be tested.
 * **Sensitive-data tests**: API responses and logs must not contain full passwords, tokens, phone numbers, or email addresses.
-* **Lead permission tests**: Lead Follow-up Operators may view full contact details for one lead and update follow-up status. Content Editors must not view full contact details. Lead export must cover denial for Content Editors and Lead Follow-up Operators, success for Administrators, and export audit logging.
+* **Lead permission tests**: Administrators may view full contact details for one lead and update follow-up status. Lead export must cover denial for unauthenticated or unauthorized callers, success for Administrators, and export audit logging.
 
 ---
 

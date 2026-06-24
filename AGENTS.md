@@ -73,14 +73,22 @@ If rules conflict, resolve them in this order:
 * Controllers must not call Mappers directly and must not contain database queries or stateful business rules. Cross-module orchestration belongs in Application Service.
 * Services are responsible for transactions, business validation, visible/hidden rules, audit, and post-commit cache invalidation.
 * Mappers are only responsible for data access. Complex SQL must remain readable and testable.
+* Public classes, public methods, core business rules, exception branches, permission checks, cache invalidation, post-commit actions, and complex SQL must include necessary comments or Javadoc. When behavior changes, related comments must be updated too.
 * APIs must not return Entities directly.
-* Admin APIs must require authentication and must be authorized under the three-role model: `Administrator`, `Content Editor`, and `Lead Follow-up Operator`.
+* Admin APIs must require authentication and be restricted to the `Administrator` role.
 * Portal APIs must not return hidden or logically deleted content. Drafts, approval states, scheduled publish, and similar lifecycle states may be used only after the PRD explicitly introduces them.
 * Features involving customer leads, accounts, permissions, exports, or viewing sensitive data must follow the security rules.
 
+## Runtime and Testing Environment
+
+* Local runtime, integration testing, and environment verification should use Docker by default.
+* MySQL, Redis, and other required middleware should be started through Docker or Docker Compose unless the repository documentation explicitly defines another approved path.
+* If a change introduces new runtime or test dependencies, update the corresponding Docker setup and documentation together.
+* If a task cannot be verified in the Docker-based environment, explain the reason and the residual risk explicitly.
+
 ### After Completing a Task
 
-* Run the tests related to the change.
+* Run the tests related to the change in the Docker-based environment.
 * If tests cannot run, explain the reason and the uncovered risk.
 * Check whether API docs, rule files, or the requirement document need updates.
 * Any new, changed, or removed API requires an update to [docs/接口文档.md](docs/接口文档.md), including the Controller file path and method name in the corresponding API entry.
@@ -161,7 +169,7 @@ Every business implementation must satisfy these minimum requirements:
 * Critical content operations must have audit logs.
 * Content visibility, hiding, and deletion must have explicit state rules.
 * Portal queries must filter out hidden and logically deleted data.
-* Sensitive data such as customer leads must be masked by default. Lead Follow-up Operators may view full contact info for a single lead and update follow-up data. Export is admin-only by default.
+* Sensitive data such as customer leads must be masked by default. Viewing full contact info and export are administrator-only by default.
 * File uploads must validate type, size, path, and access control. Expensive image processing must be async or background-based. Business updates and deletes must maintain media references and handle unbinding.
 * Database writes must account for transaction boundaries and unique constraints. Soft-delete tables must handle unique index conflicts correctly.
 * Cache invalidation after content changes must happen after transaction commit, with TTL and delayed second-delete as fallback. Production multi-instance deployment must use distributed or equivalent shared cache.
@@ -203,8 +211,9 @@ Do not do formatting-only review. The core risks in this website backend are acc
 The following items still require clarification before formal implementation. The base package `com.company.officialwebsite` has already been created and is not considered pending:
 
 * Runtime versions and deployment parameters for MySQL, Redis, and other middleware, including cache namespace conventions for Redis or equivalent shared cache.
+* Docker baseline choice for local development and verification, including whether the repository standard is `docker compose`, service naming rules, mounted directories, and bootstrap commands.
 * Whether images, videos, and PDFs should be stored in object storage.
-* Permission framework choice, such as Spring Security, Sa-Token, or a custom solution. The current authorization model is based on `Administrator`, `Content Editor`, and `Lead Follow-up Operator`.
+* Permission framework choice, such as Spring Security, Sa-Token, or a custom solution. The current authorization model is based on a single `Administrator` role for the backend.
 * Database migration tool choice, such as Flyway or Liquibase.
-* For MySQL dialect behavior, migration scripts, and `deleted_marker` composite unique indexes, the test environment must provide MySQL or an accepted compatible verification path. This can be Testcontainers, a standalone MySQL instance, or another team-approved compatible environment. Not every daily test run must start a container.
+* For MySQL dialect behavior, migration scripts, and `deleted_marker` composite unique indexes, the test environment must provide MySQL through Docker by default, or another team-approved compatible verification path. This can be Docker Compose, Testcontainers, a standalone MySQL instance, or another approved environment. Not every daily test run must start a container if the team has already defined an equivalent Docker-based baseline.
 * Whether CRM, WeCom, DingTalk, email, or online customer service integrations are required.

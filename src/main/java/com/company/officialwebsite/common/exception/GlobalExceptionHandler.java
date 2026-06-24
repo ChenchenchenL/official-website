@@ -18,17 +18,11 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-/**
- * GlobalExceptionHandler：统一将业务异常、参数异常和未知异常转换为 ApiResponse。
- */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /**
-     * 业务异常已携带稳定错误码，只按错误码映射 HTTP 状态并保留业务安全提示。
-     */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
         ErrorCode errorCode = ex.getErrorCode();
@@ -36,9 +30,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(ApiResponse.fail(errorCode, ex.getMessage()));
     }
 
-    /**
-     * 处理 JSON 请求体 Bean Validation 失败，并返回字段级错误列表。
-     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<ValidationErrorData>> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex) {
@@ -47,9 +38,6 @@ public class GlobalExceptionHandler {
                 .toList());
     }
 
-    /**
-     * 处理表单参数或查询参数绑定失败，并返回字段级错误列表。
-     */
     @ExceptionHandler(BindException.class)
     public ResponseEntity<ApiResponse<ValidationErrorData>> handleBindException(BindException ex) {
         return buildValidationErrorResponse(ex.getBindingResult().getFieldErrors().stream()
@@ -57,9 +45,6 @@ public class GlobalExceptionHandler {
                 .toList());
     }
 
-    /**
-     * 处理缺失参数、类型不匹配和单参数校验失败等无法定位到字段列表的请求错误。
-     */
     @ExceptionHandler({
             ConstraintViolationException.class,
             MissingServletRequestParameterException.class,
@@ -71,9 +56,6 @@ public class GlobalExceptionHandler {
                 ErrorCode.COMMON_PARAM_INVALID.getDefaultMessage()));
     }
 
-    /**
-     * 未知异常只向调用方返回系统级错误，完整堆栈保留在服务端日志中。
-     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception ex) {
         log.error("Unhandled system exception", ex);
@@ -100,10 +82,25 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.AUTH_CSRF_INVALID) {
             return HttpStatus.FORBIDDEN;
         }
-        if (errorCode == ErrorCode.COMMON_PARAM_INVALID) {
+        if (errorCode == ErrorCode.COMMON_PARAM_INVALID
+                || errorCode == ErrorCode.MEDIA_FILE_INVALID
+                || errorCode == ErrorCode.SITE_LOGO_MEDIA_INVALID
+                || errorCode == ErrorCode.SITE_NAVIGATION_TARGET_INVALID
+                || errorCode == ErrorCode.SITE_NAVIGATION_LEVEL_INVALID
+                || errorCode == ErrorCode.SITE_NAVIGATION_PARENT_INVALID
+                || errorCode == ErrorCode.SITE_HOME_BANNER_MEDIA_INVALID
+                || errorCode == ErrorCode.SITE_HOME_BANNER_TARGET_INVALID
+                || errorCode == ErrorCode.SITE_HOME_METRIC_VALUE_INVALID
+                || errorCode == ErrorCode.SITE_HONOR_ICON_INVALID) {
             return HttpStatus.BAD_REQUEST;
         }
-        if (errorCode == ErrorCode.COMMON_RESOURCE_NOT_FOUND) {
+        if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
+                || errorCode == ErrorCode.SITE_HONOR_NAME_DUPLICATE
+                || errorCode == ErrorCode.COMMON_DUPLICATE_DATA) {
+            return HttpStatus.OK;
+        }
+        if (errorCode == ErrorCode.COMMON_RESOURCE_NOT_FOUND
+                || errorCode == ErrorCode.SITE_HONOR_NOT_FOUND) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

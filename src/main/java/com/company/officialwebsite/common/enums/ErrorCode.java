@@ -22,25 +22,27 @@ public enum ErrorCode {
     AUTH_ACCOUNT_DISABLED(20004, "AUTH", "账号已被禁用"),
     AUTH_CSRF_INVALID(20005, "AUTH", "请求校验失败，请刷新页面后重试"),
 
-    SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
+    SITE_LOGO_MEDIA_INVALID(30001, "SITE", "站点 Logo 资源不可用"),
+    SITE_NAVIGATION_TARGET_INVALID(30002, "SITE", "导航目标配置不合法"),
+    SITE_NAVIGATION_LEVEL_INVALID(30003, "SITE", "导航层级不合法"),
+    SITE_NAVIGATION_PARENT_INVALID(30004, "SITE", "父菜单不存在或不可挂接"),
+    SITE_NAVIGATION_NAME_DUPLICATE(30005, "SITE", "同级菜单名称重复"),
+    SITE_HOME_BANNER_MEDIA_INVALID(30006, "SITE", "首页 Banner 背景图资源不可用"),
+    SITE_HOME_BANNER_TARGET_INVALID(30007, "SITE", "首页 Banner 按钮跳转配置不合法"),
+    SITE_HOME_METRIC_VALUE_INVALID(30008, "SITE", "首页核心指标数值格式不合法"),
+    SITE_HONOR_NOT_FOUND(30401, "SITE", "荣誉记录不存在"),
+    SITE_HONOR_ICON_INVALID(30402, "SITE", "荣誉图标资源不可用"),
+    SITE_HONOR_NAME_DUPLICATE(30403, "SITE", "荣誉名称重复"),
 
-    /*
-     * 预留编码段：
-     * 30000-39999 站点、导航、首页与 AI 能力
-     * 40000-49999 产品
-     * 50000-59999 行业、案例与新闻
-     * 60000-69999 媒体资源
-     * 70000-79999 客户线索
-     * 80000-89999 审计、缓存与系统支撑
-     * 90000-99999 第三方集成或扩展预留
-     */
+    MEDIA_FILE_INVALID(60001, "MEDIA", "上传文件不符合要求"),
+
+    SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
 
     private final int code;
     private final String module;
     private final String defaultMessage;
 
     static {
-        // 启动时阻断重复数字码，避免多人协作时无意复用已对外承诺的错误码。
         Set<Integer> usedCodes = new HashSet<>();
         for (ErrorCode errorCode : values()) {
             if (!usedCodes.add(errorCode.code)) {

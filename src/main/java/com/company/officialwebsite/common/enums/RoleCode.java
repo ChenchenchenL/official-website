@@ -4,13 +4,11 @@ import com.company.officialwebsite.common.constants.SecurityConstants;
 import java.util.Arrays;
 
 /**
- * RoleCode：统一定义后台三角色模型及其 Spring Security 权限名。
+ * RoleCode：统一定义后台管理员角色及其 Spring Security 权限名。
  */
 public enum RoleCode {
 
-    ADMINISTRATOR("ADMINISTRATOR", "管理员"),
-    CONTENT_EDITOR("CONTENT_EDITOR", "内容编辑员"),
-    LEAD_FOLLOW_UP_OPERATOR("LEAD_FOLLOW_UP_OPERATOR", "线索跟进员");
+    ADMINISTRATOR("ADMINISTRATOR", "管理员");
 
     private final String code;
     private final String description;

@@ -1,2 +1,14 @@
-com/company/officialwebsite/common/enums/ErrorCodeTest.class
+com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest$ScheduledTask.class
+com/company/officialwebsite/common/config/AsyncConfigurationTest$AsyncTaskSnapshot.class
+com/company/officialwebsite/common/config/CacheConfigurationTest.class
 com/company/officialwebsite/common/response/ApiResponseTest.class
+com/company/officialwebsite/modules/system/controller/AdminAuthControllerTest.class
+com/company/officialwebsite/modules/system/mapper/SysUserMapperIntegrationTest.class
+com/company/officialwebsite/common/config/AsyncConfigurationTest.class
+com/company/officialwebsite/common/enums/ErrorCodeTest.class
+com/company/officialwebsite/common/config/JacksonConfigurationTest.class
+com/company/officialwebsite/common/config/CorsConfigurationTest.class
+com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest$RecordingTaskScheduler.class
+com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.class
+com/company/officialwebsite/common/config/SchedulingConfigurationTest.class
+com/company/officialwebsite/common/config/JacksonConfigurationTest$SampleValue.class

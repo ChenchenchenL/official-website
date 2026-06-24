@@ -92,10 +92,12 @@ public class GlobalExceptionHandler {
     }
 
     private HttpStatus resolveHttpStatus(ErrorCode errorCode) {
-        if (errorCode == ErrorCode.AUTH_UNAUTHORIZED) {
+        if (errorCode == ErrorCode.AUTH_UNAUTHORIZED || errorCode == ErrorCode.AUTH_LOGIN_FAILED) {
             return HttpStatus.UNAUTHORIZED;
         }
-        if (errorCode == ErrorCode.AUTH_FORBIDDEN) {
+        if (errorCode == ErrorCode.AUTH_FORBIDDEN
+                || errorCode == ErrorCode.AUTH_ACCOUNT_DISABLED
+                || errorCode == ErrorCode.AUTH_CSRF_INVALID) {
             return HttpStatus.FORBIDDEN;
         }
         if (errorCode == ErrorCode.COMMON_PARAM_INVALID) {

@@ -1,2 +1,10 @@
+/workspace/src/test/java/com/company/officialwebsite/common/config/AsyncConfigurationTest.java
+/workspace/src/test/java/com/company/officialwebsite/common/config/CacheConfigurationTest.java
+/workspace/src/test/java/com/company/officialwebsite/common/config/CorsConfigurationTest.java
+/workspace/src/test/java/com/company/officialwebsite/common/config/JacksonConfigurationTest.java
+/workspace/src/test/java/com/company/officialwebsite/common/config/SchedulingConfigurationTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/enums/ErrorCodeTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/response/ApiResponseTest.java
+/workspace/src/test/java/com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/system/controller/AdminAuthControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/system/mapper/SysUserMapperIntegrationTest.java

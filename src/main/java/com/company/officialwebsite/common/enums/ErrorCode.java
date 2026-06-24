@@ -18,6 +18,9 @@ public enum ErrorCode {
 
     AUTH_UNAUTHORIZED(20001, "AUTH", "请先登录"),
     AUTH_FORBIDDEN(20002, "AUTH", "无权执行该操作"),
+    AUTH_LOGIN_FAILED(20003, "AUTH", "用户名或密码错误"),
+    AUTH_ACCOUNT_DISABLED(20004, "AUTH", "账号已被禁用"),
+    AUTH_CSRF_INVALID(20005, "AUTH", "请求校验失败，请刷新页面后重试"),
 
     SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
 

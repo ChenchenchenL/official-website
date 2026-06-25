@@ -8,7 +8,9 @@
 /workspace/src/test/java/com/company/officialwebsite/common/utils/StringFieldUtilsTest.java
 /workspace/src/test/java/com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/media/controller/AdminMediaAssetControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/product/controller/ProductControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/AiCardControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/CapabilityControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/ClientLogoControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/HomeBannerControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/HomeMetricCardControllerTest.java

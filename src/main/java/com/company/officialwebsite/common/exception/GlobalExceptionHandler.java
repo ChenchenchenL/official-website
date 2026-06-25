@@ -97,7 +97,9 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_HONOR_ICON_INVALID
                 || errorCode == ErrorCode.SITE_CLIENT_LOGO_MEDIA_INVALID
                 || errorCode == ErrorCode.SITE_STRENGTH_METRIC_ICON_INVALID
-                || errorCode == ErrorCode.SITE_AI_CARD_ICON_INVALID) {
+                || errorCode == ErrorCode.SITE_AI_CARD_ICON_INVALID
+                || errorCode == ErrorCode.PRODUCT_LOGO_INVALID
+                || errorCode == ErrorCode.PRODUCT_NAME_DUPLICATE) {
             return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
@@ -105,6 +107,8 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_CLIENT_LOGO_NAME_DUPLICATE
                 || errorCode == ErrorCode.SITE_STRENGTH_METRIC_LABEL_DUPLICATE
                 || errorCode == ErrorCode.SITE_AI_CARD_NAME_DUPLICATE
+                || errorCode == ErrorCode.SITE_CAPABILITY_CATEGORY_NAME_DUPLICATE
+                || errorCode == ErrorCode.SITE_CAPABILITY_ITEM_NAME_DUPLICATE
                 || errorCode == ErrorCode.COMMON_DUPLICATE_DATA) {
             return HttpStatus.OK;
         }
@@ -112,7 +116,10 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_HONOR_NOT_FOUND
                 || errorCode == ErrorCode.SITE_CLIENT_LOGO_NOT_FOUND
                 || errorCode == ErrorCode.SITE_STRENGTH_METRIC_NOT_FOUND
-                || errorCode == ErrorCode.SITE_AI_CARD_NOT_FOUND) {
+                || errorCode == ErrorCode.SITE_AI_CARD_NOT_FOUND
+                || errorCode == ErrorCode.SITE_CAPABILITY_CATEGORY_NOT_FOUND
+                || errorCode == ErrorCode.SITE_CAPABILITY_ITEM_NOT_FOUND
+                || errorCode == ErrorCode.PRODUCT_NOT_FOUND) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

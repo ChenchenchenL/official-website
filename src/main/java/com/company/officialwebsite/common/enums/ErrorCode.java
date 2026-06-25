@@ -45,6 +45,15 @@ public enum ErrorCode {
     SITE_AI_CARD_ICON_INVALID(30702, "SITE", "指定的卡片Icon媒体ID不存在或已被逻辑删除"),
     SITE_AI_CARD_NAME_DUPLICATE(30703, "SITE", "AI卡片名称已存在"),
 
+    SITE_CAPABILITY_CATEGORY_NOT_FOUND(30801, "SITE", "核心能力底座分类记录不存在或已被逻辑删除"),
+    SITE_CAPABILITY_CATEGORY_NAME_DUPLICATE(30802, "SITE", "已存在重名底座分类名称"),
+    SITE_CAPABILITY_ITEM_NOT_FOUND(30901, "SITE", "底座子项记录不存在或已被逻辑删除"),
+    SITE_CAPABILITY_ITEM_NAME_DUPLICATE(30902, "SITE", "同一底座分类下已存在同名子项名称"),
+
+    PRODUCT_NOT_FOUND(40001, "PRODUCT", "产品记录不存在或已被逻辑删除"),
+    PRODUCT_LOGO_INVALID(40002, "PRODUCT", "指定的产品 Logo 媒体 ID 在 media_file 库中不存在或已被逻辑删除"),
+    PRODUCT_NAME_DUPLICATE(40003, "PRODUCT", "产品名称与库中已存在的活跃产品重名"),
+
     MEDIA_FILE_INVALID(60001, "MEDIA", "上传文件不符合要求"),
 
     SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");

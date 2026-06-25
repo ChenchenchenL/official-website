@@ -8,7 +8,7 @@ import java.util.Objects;
 
 public final class ConcurrencyHelper {
 
-    private static final String STATE_CONFLICT_MSG = "数据已被其他操作更新，请刷新后重试";
+    public static final String STATE_CONFLICT_MSG = "数据已被其他操作更新，请刷新后重试";
 
     public static void assertVersion(Integer currentVersion, Integer requestVersion) {
         if (requestVersion == null || requestVersion < 0) {

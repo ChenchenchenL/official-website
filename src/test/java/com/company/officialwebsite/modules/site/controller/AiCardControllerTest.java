@@ -272,6 +272,7 @@ class AiCardControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void updateCard_shouldFail_whenOptimisticLockConflict() throws Exception {
         MockHttpSession session = loginAsAdmin();
+        Long iconId = createPublicMediaAsset();
 
         mockMvc.perform(put("/admin/api/site/ai-cards/-9501")
                         .session(session)
@@ -281,10 +282,11 @@ class AiCardControllerTest extends BaseAdminControllerIntegrationTest {
                                 {
                                   "version": 99,
                                   "name": "冲突版本名称",
+                                  "iconId": %d,
                                   "description": "并发冲突测试",
                                   "visible": true
                                 }
-                                """))
+                                """.formatted(iconId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }

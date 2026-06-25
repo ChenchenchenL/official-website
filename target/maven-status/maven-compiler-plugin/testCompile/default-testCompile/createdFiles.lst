@@ -9,6 +9,7 @@ com/company/officialwebsite/modules/site/controller/HomeMetricCardControllerTest
 com/company/officialwebsite/modules/site/controller/NavigationMenuControllerTest.class
 com/company/officialwebsite/common/config/SchedulingConfigurationTest.class
 com/company/officialwebsite/common/config/JacksonConfigurationTest$SampleValue.class
+com/company/officialwebsite/modules/site/controller/CapabilityControllerTest.class
 com/company/officialwebsite/modules/site/controller/HonorControllerTest.class
 com/company/officialwebsite/modules/site/controller/HomeBannerControllerTest.class
 com/company/officialwebsite/support/TestConstants.class
@@ -22,6 +23,7 @@ com/company/officialwebsite/modules/media/controller/AdminMediaAssetControllerTe
 com/company/officialwebsite/support/BaseAdminControllerIntegrationTest.class
 com/company/officialwebsite/common/config/CorsConfigurationTest.class
 com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest$RecordingTaskScheduler.class
+com/company/officialwebsite/modules/product/controller/ProductControllerTest.class
 com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.class
 com/company/officialwebsite/modules/site/controller/SiteConfigControllerTest.class
 com/company/officialwebsite/common/utils/StringFieldUtilsTest.class

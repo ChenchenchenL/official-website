@@ -72,6 +72,8 @@ public class SiteConfigServiceImpl implements SiteConfigService {
     @Transactional
     public AdminSiteConfigVO updateConfig(SiteConfigUpdateRequestDTO requestDTO) {
         SiteConfigEntity entity = requireConfig();
+        log.info("update site config request configId={} version={} logoLightMediaId={} logoDarkMediaId={}",
+                entity.getId(), requestDTO.getVersion(), requestDTO.getLogoLightMediaId(), requestDTO.getLogoDarkMediaId());
         validateRequest(requestDTO);
         // 单例配置使用乐观锁控制并发覆盖，避免后台多人编辑时发生静默覆盖。
         if (!entity.getVersion().equals(requestDTO.getVersion())) {

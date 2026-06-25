@@ -15,6 +15,8 @@ The system is split into two parts:
 
 For complete business requirements, see [docs/需求说明.md](docs/需求说明.md).
 
+For the project blueprint, see [docs/项目蓝图.md](docs/项目蓝图.md).
+
 For API documentation, see [docs/接口文档.md](docs/接口文档.md). Every new, changed, or removed API must be reflected in that document.
 
 ---
@@ -105,6 +107,7 @@ Current documentation and rules layout:
 ├── AGENTS.md
 ├── README.md
 ├── docs
+│   ├── 项目蓝图.md
 │   ├── 架构设计说明.md
 │   ├── 数据库设计说明.md
 │   ├── 错误码说明.md

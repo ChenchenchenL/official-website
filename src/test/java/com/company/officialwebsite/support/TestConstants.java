@@ -26,6 +26,15 @@ public final class TestConstants {
     public static final int SITE_HONOR_NOT_FOUND = ErrorCode.SITE_HONOR_NOT_FOUND.getCode();
     public static final int SITE_HONOR_ICON_INVALID = ErrorCode.SITE_HONOR_ICON_INVALID.getCode();
     public static final int SITE_HONOR_NAME_DUPLICATE = ErrorCode.SITE_HONOR_NAME_DUPLICATE.getCode();
+    public static final int SITE_CLIENT_LOGO_NOT_FOUND = ErrorCode.SITE_CLIENT_LOGO_NOT_FOUND.getCode();
+    public static final int SITE_CLIENT_LOGO_MEDIA_INVALID = ErrorCode.SITE_CLIENT_LOGO_MEDIA_INVALID.getCode();
+    public static final int SITE_CLIENT_LOGO_NAME_DUPLICATE = ErrorCode.SITE_CLIENT_LOGO_NAME_DUPLICATE.getCode();
+    public static final int SITE_STRENGTH_METRIC_NOT_FOUND = ErrorCode.SITE_STRENGTH_METRIC_NOT_FOUND.getCode();
+    public static final int SITE_STRENGTH_METRIC_ICON_INVALID = ErrorCode.SITE_STRENGTH_METRIC_ICON_INVALID.getCode();
+    public static final int SITE_STRENGTH_METRIC_LABEL_DUPLICATE = ErrorCode.SITE_STRENGTH_METRIC_LABEL_DUPLICATE.getCode();
+    public static final int SITE_AI_CARD_NOT_FOUND = ErrorCode.SITE_AI_CARD_NOT_FOUND.getCode();
+    public static final int SITE_AI_CARD_ICON_INVALID = ErrorCode.SITE_AI_CARD_ICON_INVALID.getCode();
+    public static final int SITE_AI_CARD_NAME_DUPLICATE = ErrorCode.SITE_AI_CARD_NAME_DUPLICATE.getCode();
 
     public static final String DEFAULT_SITE_TITLE = "测试官网标题";
     public static final String DEFAULT_SEO_KEYWORDS = "AI,Data,Testing";

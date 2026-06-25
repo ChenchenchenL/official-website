@@ -13,5 +13,5 @@ CREATE TABLE IF NOT EXISTS cms_home_metric_card (
     deleted_marker BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT pk_cms_home_metric_card PRIMARY KEY (id),
     KEY idx_cms_home_metric_card_deleted_sort (deleted_marker, sort_order, id),
-    KEY idx_cms_home_metric_card_visible_sort (visible, deleted_marker, sort_order, id)
+    KEY idx_cms_home_metric_card_visible_sort (deleted_marker, visible, sort_order, id)
 );

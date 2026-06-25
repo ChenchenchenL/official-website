@@ -32,6 +32,7 @@ official:
     key-prefix: official
     default-ttl: 10m
     second-delete-delay: 1s
+    sort-gap: 10
   cors:
     admin:
       allowed-origins:

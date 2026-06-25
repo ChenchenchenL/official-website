@@ -26,6 +26,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
         ErrorCode errorCode = ex.getErrorCode();
+        if (errorCode != ErrorCode.SUCCESS) {
+            log.warn("business exception code={} message={}", errorCode.getCode(), ex.getMessage());
+        }
         HttpStatus status = resolveHttpStatus(errorCode);
         return ResponseEntity.status(status).body(ApiResponse.fail(errorCode, ex.getMessage()));
     }
@@ -91,16 +94,25 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_HOME_BANNER_MEDIA_INVALID
                 || errorCode == ErrorCode.SITE_HOME_BANNER_TARGET_INVALID
                 || errorCode == ErrorCode.SITE_HOME_METRIC_VALUE_INVALID
-                || errorCode == ErrorCode.SITE_HONOR_ICON_INVALID) {
+                || errorCode == ErrorCode.SITE_HONOR_ICON_INVALID
+                || errorCode == ErrorCode.SITE_CLIENT_LOGO_MEDIA_INVALID
+                || errorCode == ErrorCode.SITE_STRENGTH_METRIC_ICON_INVALID
+                || errorCode == ErrorCode.SITE_AI_CARD_ICON_INVALID) {
             return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
                 || errorCode == ErrorCode.SITE_HONOR_NAME_DUPLICATE
+                || errorCode == ErrorCode.SITE_CLIENT_LOGO_NAME_DUPLICATE
+                || errorCode == ErrorCode.SITE_STRENGTH_METRIC_LABEL_DUPLICATE
+                || errorCode == ErrorCode.SITE_AI_CARD_NAME_DUPLICATE
                 || errorCode == ErrorCode.COMMON_DUPLICATE_DATA) {
             return HttpStatus.OK;
         }
         if (errorCode == ErrorCode.COMMON_RESOURCE_NOT_FOUND
-                || errorCode == ErrorCode.SITE_HONOR_NOT_FOUND) {
+                || errorCode == ErrorCode.SITE_HONOR_NOT_FOUND
+                || errorCode == ErrorCode.SITE_CLIENT_LOGO_NOT_FOUND
+                || errorCode == ErrorCode.SITE_STRENGTH_METRIC_NOT_FOUND
+                || errorCode == ErrorCode.SITE_AI_CARD_NOT_FOUND) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

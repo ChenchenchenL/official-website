@@ -61,6 +61,9 @@ public class OfficialProperties {
 
         private Duration secondDeleteDelay = Duration.ofSeconds(1);
 
+        /** 排序间隔步长，默认 10 */
+        private int sortGap = 10;
+
         public String getKeyPrefix() {
             return keyPrefix;
         }
@@ -83,6 +86,14 @@ public class OfficialProperties {
 
         public void setSecondDeleteDelay(Duration secondDeleteDelay) {
             this.secondDeleteDelay = secondDeleteDelay;
+        }
+
+        public int getSortGap() {
+            return sortGap;
+        }
+
+        public void setSortGap(int sortGap) {
+            this.sortGap = sortGap;
         }
     }
 

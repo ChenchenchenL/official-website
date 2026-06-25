@@ -111,6 +111,8 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
     @Transactional
     public List<AdminNavigationMenuVO> updateMenu(Long menuId, NavigationMenuUpdateRequestDTO requestDTO) {
         NavigationMenuEntity entity = requireActiveMenu(menuId);
+        log.info("update navigation menu request menuId={} version={} targetType={}",
+                menuId, requestDTO.getVersion(), requestDTO.getTargetType());
         assertVersion(entity.getVersion(), requestDTO.getVersion());
         if (isRootMenu(entity) && hasVisibleOrHiddenChildren(entity.getId())) {
             MenuTargetTypeEnum targetType = parseTargetType(requestDTO.getTargetType());
@@ -133,6 +135,8 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
     @Transactional
     public List<AdminNavigationMenuVO> updateVisibility(Long menuId, NavigationMenuVisibilityUpdateRequestDTO requestDTO) {
         NavigationMenuEntity entity = requireActiveMenu(menuId);
+        log.info("update navigation menu visibility request menuId={} version={} visible={}",
+                menuId, requestDTO.getVersion(), requestDTO.getVisible());
         assertVersion(entity.getVersion(), requestDTO.getVersion());
         Object before = toAdminFlatSnapshot(entity);
         entity.setVisible(requestDTO.getVisible());

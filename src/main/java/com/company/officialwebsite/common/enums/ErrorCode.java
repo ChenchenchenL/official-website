@@ -45,6 +45,14 @@ public enum ErrorCode {
     SITE_AI_CARD_ICON_INVALID(30702, "SITE", "指定的卡片Icon媒体ID不存在或已被逻辑删除"),
     SITE_AI_CARD_NAME_DUPLICATE(30703, "SITE", "AI卡片名称已存在"),
 
+    SITE_UNIVERSITY_NOT_FOUND(31001, "SITE", "合作高校记录不存在或已被逻辑删除"),
+    SITE_UNIVERSITY_LOGO_INVALID(31002, "SITE", "合作高校 Logo 媒体 ID 不可用"),
+    SITE_UNIVERSITY_NAME_DUPLICATE(31003, "SITE", "合作高校简称或全称在活跃数据中已存在"),
+
+    SITE_RESEARCH_DIRECTION_NOT_FOUND(31101, "SITE", "研发方向记录不存在或已被逻辑删除"),
+    SITE_RESEARCH_DIRECTION_ICON_INVALID(31102, "SITE", "研发方向 Icon 媒体 ID 不可用"),
+    SITE_RESEARCH_DIRECTION_TITLE_DUPLICATE(31103, "SITE", "研发方向中文标题在活跃数据中已存在"),
+
     SITE_CAPABILITY_CATEGORY_NOT_FOUND(30801, "SITE", "核心能力底座分类记录不存在或已被逻辑删除"),
     SITE_CAPABILITY_CATEGORY_NAME_DUPLICATE(30802, "SITE", "已存在重名底座分类名称"),
     SITE_CAPABILITY_ITEM_NOT_FOUND(30901, "SITE", "底座子项记录不存在或已被逻辑删除"),
@@ -53,6 +61,13 @@ public enum ErrorCode {
     PRODUCT_NOT_FOUND(40001, "PRODUCT", "产品记录不存在或已被逻辑删除"),
     PRODUCT_LOGO_INVALID(40002, "PRODUCT", "指定的产品 Logo 媒体 ID 在 media_file 库中不存在或已被逻辑删除"),
     PRODUCT_NAME_DUPLICATE(40003, "PRODUCT", "产品名称与库中已存在的活跃产品重名"),
+    PRODUCT_SOLUTION_NOT_FOUND(40101, "PRODUCT", "行业解决方案记录不存在或已被逻辑删除"),
+    PRODUCT_SOLUTION_ICON_INVALID(40102, "PRODUCT", "行业解决方案的 Icon 媒体 ID 不可用"),
+    PRODUCT_SOLUTION_NAME_DUPLICATE(40103, "PRODUCT", "行业解决方案名称已存在"),
+
+    CASE_NOT_FOUND(40201, "CASE", "标杆案例不存在或已被逻辑删除"),
+    CASE_LOGO_INVALID(40202, "CASE", "标杆案例的封面/Logo 媒体 ID 不可用"),
+    CASE_TITLE_DUPLICATE(40203, "CASE", "标杆案例标题已存在"),
 
     MEDIA_FILE_INVALID(60001, "MEDIA", "上传文件不符合要求"),
 

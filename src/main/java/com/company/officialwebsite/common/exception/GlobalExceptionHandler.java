@@ -99,7 +99,11 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_STRENGTH_METRIC_ICON_INVALID
                 || errorCode == ErrorCode.SITE_AI_CARD_ICON_INVALID
                 || errorCode == ErrorCode.PRODUCT_LOGO_INVALID
-                || errorCode == ErrorCode.PRODUCT_NAME_DUPLICATE) {
+                || errorCode == ErrorCode.PRODUCT_NAME_DUPLICATE
+                || errorCode == ErrorCode.PRODUCT_SOLUTION_ICON_INVALID
+                || errorCode == ErrorCode.PRODUCT_SOLUTION_NAME_DUPLICATE
+                || errorCode == ErrorCode.CASE_LOGO_INVALID
+                || errorCode == ErrorCode.CASE_TITLE_DUPLICATE) {
             return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
@@ -119,7 +123,9 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_AI_CARD_NOT_FOUND
                 || errorCode == ErrorCode.SITE_CAPABILITY_CATEGORY_NOT_FOUND
                 || errorCode == ErrorCode.SITE_CAPABILITY_ITEM_NOT_FOUND
-                || errorCode == ErrorCode.PRODUCT_NOT_FOUND) {
+                || errorCode == ErrorCode.PRODUCT_NOT_FOUND
+                || errorCode == ErrorCode.PRODUCT_SOLUTION_NOT_FOUND
+                || errorCode == ErrorCode.CASE_NOT_FOUND) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

@@ -5,13 +5,18 @@ com/company/officialwebsite/common/config/CacheConfigurationTest.class
 com/company/officialwebsite/modules/system/controller/AdminAuthControllerTest.class
 com/company/officialwebsite/modules/site/controller/ClientLogoControllerTest.class
 com/company/officialwebsite/common/config/JacksonConfigurationTest.class
+com/company/officialwebsite/modules/product/service/impl/IndustrySolutionServiceImplTest.class
 com/company/officialwebsite/modules/site/controller/HomeMetricCardControllerTest.class
+com/company/officialwebsite/modules/site/controller/ResearchDirectionControllerTest.class
 com/company/officialwebsite/modules/site/controller/NavigationMenuControllerTest.class
+com/company/officialwebsite/modules/casecenter/service/impl/CaseServiceImplTest.class
 com/company/officialwebsite/common/config/SchedulingConfigurationTest.class
 com/company/officialwebsite/common/config/JacksonConfigurationTest$SampleValue.class
 com/company/officialwebsite/modules/site/controller/CapabilityControllerTest.class
 com/company/officialwebsite/modules/site/controller/HonorControllerTest.class
+com/company/officialwebsite/modules/site/controller/PartnerUniversityControllerTest.class
 com/company/officialwebsite/modules/site/controller/HomeBannerControllerTest.class
+com/company/officialwebsite/modules/product/controller/IndustrySolutionControllerTest.class
 com/company/officialwebsite/support/TestConstants.class
 com/company/officialwebsite/modules/site/controller/AiCardControllerTest.class
 com/company/officialwebsite/modules/site/controller/HomeBannerControllerTest$UploadedMedia.class
@@ -23,6 +28,7 @@ com/company/officialwebsite/modules/media/controller/AdminMediaAssetControllerTe
 com/company/officialwebsite/support/BaseAdminControllerIntegrationTest.class
 com/company/officialwebsite/common/config/CorsConfigurationTest.class
 com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest$RecordingTaskScheduler.class
+com/company/officialwebsite/modules/casecenter/controller/CaseControllerTest.class
 com/company/officialwebsite/modules/product/controller/ProductControllerTest.class
 com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.class
 com/company/officialwebsite/modules/site/controller/SiteConfigControllerTest.class

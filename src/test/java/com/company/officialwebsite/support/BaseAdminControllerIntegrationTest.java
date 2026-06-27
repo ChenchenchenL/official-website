@@ -29,7 +29,7 @@ public abstract class BaseAdminControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockHttpSession session = (MockHttpSession) loginResult.getRequest().getSession(false);
+        MockHttpSession session = (MockHttpSession) loginResult.getRequest().getSession(true);
         assertNotNull(session, "authenticated login should create a session");
         return session;
     }

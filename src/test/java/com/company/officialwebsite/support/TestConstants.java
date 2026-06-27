@@ -35,6 +35,18 @@ public final class TestConstants {
     public static final int SITE_AI_CARD_NOT_FOUND = ErrorCode.SITE_AI_CARD_NOT_FOUND.getCode();
     public static final int SITE_AI_CARD_ICON_INVALID = ErrorCode.SITE_AI_CARD_ICON_INVALID.getCode();
     public static final int SITE_AI_CARD_NAME_DUPLICATE = ErrorCode.SITE_AI_CARD_NAME_DUPLICATE.getCode();
+    public static final int SITE_UNIVERSITY_NOT_FOUND = ErrorCode.SITE_UNIVERSITY_NOT_FOUND.getCode();
+    public static final int SITE_UNIVERSITY_LOGO_INVALID = ErrorCode.SITE_UNIVERSITY_LOGO_INVALID.getCode();
+    public static final int SITE_UNIVERSITY_NAME_DUPLICATE = ErrorCode.SITE_UNIVERSITY_NAME_DUPLICATE.getCode();
+    public static final int SITE_RESEARCH_DIRECTION_NOT_FOUND = ErrorCode.SITE_RESEARCH_DIRECTION_NOT_FOUND.getCode();
+    public static final int SITE_RESEARCH_DIRECTION_ICON_INVALID = ErrorCode.SITE_RESEARCH_DIRECTION_ICON_INVALID.getCode();
+    public static final int SITE_RESEARCH_DIRECTION_TITLE_DUPLICATE = ErrorCode.SITE_RESEARCH_DIRECTION_TITLE_DUPLICATE.getCode();
+    public static final int PRODUCT_SOLUTION_NOT_FOUND = ErrorCode.PRODUCT_SOLUTION_NOT_FOUND.getCode();
+    public static final int PRODUCT_SOLUTION_ICON_INVALID = ErrorCode.PRODUCT_SOLUTION_ICON_INVALID.getCode();
+    public static final int PRODUCT_SOLUTION_NAME_DUPLICATE = ErrorCode.PRODUCT_SOLUTION_NAME_DUPLICATE.getCode();
+    public static final int CASE_NOT_FOUND = ErrorCode.CASE_NOT_FOUND.getCode();
+    public static final int CASE_LOGO_INVALID = ErrorCode.CASE_LOGO_INVALID.getCode();
+    public static final int CASE_TITLE_DUPLICATE = ErrorCode.CASE_TITLE_DUPLICATE.getCode();
 
     public static final String DEFAULT_SITE_TITLE = "测试官网标题";
     public static final String DEFAULT_SEO_KEYWORDS = "AI,Data,Testing";

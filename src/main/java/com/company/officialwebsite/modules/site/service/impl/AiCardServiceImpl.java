@@ -8,8 +8,7 @@ import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.converter.AiCardConverter;
 import com.company.officialwebsite.modules.site.dto.AiCardCreateRequestDTO;
@@ -21,8 +20,6 @@ import com.company.officialwebsite.modules.site.service.AiCardService;
 import com.company.officialwebsite.modules.site.vo.AdminAiCardVO;
 import com.company.officialwebsite.modules.site.vo.PortalAiCardVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -33,7 +30,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,11 +54,7 @@ public class AiCardServiceImpl implements AiCardService {
     private final AiCardConverter aiCardConverter;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
     private final int sortGap;
 
     public AiCardServiceImpl(
@@ -70,20 +62,13 @@ public class AiCardServiceImpl implements AiCardService {
             AiCardConverter aiCardConverter,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.aiCardMapper = aiCardMapper;
         this.aiCardConverter = aiCardConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -277,16 +262,10 @@ public class AiCardServiceImpl implements AiCardService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalAiCardVO> getPortalCards() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalAiCardVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal ai cards cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalAiCardVO> cached = portalCacheSupport.readListCache(cacheKey, PortalAiCardVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         List<AiCardEntity> list = aiCardMapper.selectList(
@@ -297,12 +276,7 @@ public class AiCardServiceImpl implements AiCardService {
                         .orderByAsc(AiCardEntity::getId));
         List<PortalAiCardVO> result = list.stream().map(aiCardConverter::toPortalVO).toList();
 
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, result, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal ai cards cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
     }
 
@@ -351,7 +325,7 @@ public class AiCardServiceImpl implements AiCardService {
     }
 
     private void invalidatePortalCache() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

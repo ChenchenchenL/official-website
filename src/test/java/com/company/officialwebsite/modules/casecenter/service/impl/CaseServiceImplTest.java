@@ -17,6 +17,7 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.casecenter.converter.CaseConverter;
 import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
 import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
@@ -26,6 +27,7 @@ import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -75,11 +77,8 @@ class CaseServiceImplTest {
                 caseConverter,
                 mediaAssetService,
                 auditLogService,
-                portalCacheInvalidationSupport,
-                portalCacheKeyBuilder,
-                redisTemplate,
                 properties,
-                new ObjectMapper());
+                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, properties, new ObjectMapper().registerModule(new JavaTimeModule())));
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:cases");
     }

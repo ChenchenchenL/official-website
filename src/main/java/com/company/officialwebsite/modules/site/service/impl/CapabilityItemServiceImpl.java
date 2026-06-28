@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.site.dto.CapabilityItemCreateDTO;
 import com.company.officialwebsite.modules.site.dto.CapabilityItemSortItemDTO;
 import com.company.officialwebsite.modules.site.dto.CapabilityItemUpdateDTO;
@@ -43,17 +43,17 @@ public class CapabilityItemServiceImpl implements CapabilityItemService {
     private final CapabilityItemMapper capabilityItemMapper;
     private final CapabilityCategoryService capabilityCategoryService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
+    private final PortalCacheSupport portalCacheSupport;
 
     public CapabilityItemServiceImpl(
             CapabilityItemMapper capabilityItemMapper,
             @Lazy CapabilityCategoryService capabilityCategoryService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport) {
+            PortalCacheSupport portalCacheSupport) {
         this.capabilityItemMapper = capabilityItemMapper;
         this.capabilityCategoryService = capabilityCategoryService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
+        this.portalCacheSupport = portalCacheSupport;
     }
 
     @Override
@@ -239,7 +239,7 @@ public class CapabilityItemServiceImpl implements CapabilityItemService {
     }
 
     private void invalidatePortalCache() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

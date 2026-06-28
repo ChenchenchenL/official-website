@@ -132,7 +132,7 @@ class SiteConfigControllerTest extends BaseAdminControllerIntegrationTest {
                         .eq(MediaReferenceEntity::getBizModule, "SITE")
                         .eq(MediaReferenceEntity::getBizObjectId, entityId())
                         .in(MediaReferenceEntity::getBizField, java.util.List.of("logoLight", "logoDark"))));
-        Assertions.assertEquals(1L, sysAuditLogMapper.selectCount(null));
+        Assertions.assertEquals(3L, sysAuditLogMapper.selectCount(null));
     }
 
     @Test

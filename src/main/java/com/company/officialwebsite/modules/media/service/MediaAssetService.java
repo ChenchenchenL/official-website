@@ -15,6 +15,11 @@ public interface MediaAssetService {
     MediaUploadVO uploadImage(MultipartFile file);
 
     /**
+     * 统一上传入口，支持图片与文档两类公开素材。
+     */
+    MediaUploadVO upload(MultipartFile file);
+
+    /**
      * 校验媒体是否为业务可引用的公开图片资源。
      */
     MediaAssetEntity requireUsableImage(Long mediaId);

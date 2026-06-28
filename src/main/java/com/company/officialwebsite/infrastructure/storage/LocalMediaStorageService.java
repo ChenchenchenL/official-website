@@ -29,6 +29,13 @@ public class LocalMediaStorageService {
      * 统一生成存储路径，避免业务模块直接使用原始文件名作为最终路径。
      */
     public String storeImage(byte[] content, String extension) throws IOException {
+        return storeFile(content, extension);
+    }
+
+    /**
+     * 通用文件落盘方法，支撑图片与文档等多类型资源统一存储。
+     */
+    public String storeFile(byte[] content, String extension) throws IOException {
         String normalizedExtension = extension.startsWith(".") ? extension.substring(1) : extension;
         String relativeDirectory = DIRECTORY_FORMATTER.format(LocalDate.now());
         String storedFilename = UUID.randomUUID().toString().replace("-", "") + "." + normalizedExtension;

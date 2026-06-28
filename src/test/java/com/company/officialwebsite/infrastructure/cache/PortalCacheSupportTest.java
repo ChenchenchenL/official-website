@@ -2,24 +2,36 @@ package com.company.officialwebsite.infrastructure.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.company.officialwebsite.common.config.properties.OfficialProperties;
+import com.company.officialwebsite.modules.site.vo.PortalHonorVO;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -102,6 +114,171 @@ class PortalCacheSupportTest {
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }
+    }
+
+    @Test
+    void readCache_shouldReturnValue_whenCacheHit() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("official:portal:honors")).thenReturn(Map.of("name", "国家高新技术企业"));
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        PortalHonorVO result = support.readCache("official:portal:honors", PortalHonorVO.class, "honors");
+
+        assertThat(result.getName()).isEqualTo("国家高新技术企业");
+        verify(redisTemplate, never()).delete(any(String.class));
+    }
+
+    @Test
+    void readCache_shouldReturnNull_whenCacheMiss() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("official:portal:honors")).thenReturn(null);
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        PortalHonorVO result = support.readCache("official:portal:honors", PortalHonorVO.class, "honors");
+
+        assertThat(result).isNull();
+        verify(redisTemplate, never()).delete(any(String.class));
+    }
+
+    @Test
+    void readCache_shouldDeleteBadCacheAndReturnNull_whenDeserializeFails() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("official:portal:honors")).thenReturn("not-an-object");
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        PortalHonorVO result = support.readCache("official:portal:honors", PortalHonorVO.class, "honors");
+
+        assertThat(result).isNull();
+        verify(redisTemplate, times(1)).delete("official:portal:honors");
+    }
+
+    @Test
+    void readListCache_shouldDeleteBadCacheAndReturnNull_whenDeserializeFails() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("official:portal:honors")).thenReturn("not-a-list");
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        List<PortalHonorVO> result = support.readListCache("official:portal:honors", PortalHonorVO.class, "honors");
+
+        assertThat(result).isNull();
+        verify(redisTemplate, times(1)).delete("official:portal:honors");
+    }
+
+    @Test
+    void readCache_shouldReturnNull_whenRedisReadFails() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        when(redisTemplate.opsForValue()).thenThrow(new RuntimeException("redis down"));
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        PortalHonorVO result = support.readCache("official:portal:honors", PortalHonorVO.class, "honors");
+
+        assertThat(result).isNull();
+        verify(redisTemplate, never()).delete(any(String.class));
+    }
+
+    @Test
+    void readCache_shouldDeleteBadCache_whenRedisThrowsSerializationException() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        when(redisTemplate.opsForValue())
+                .thenThrow(new SerializationException("corrupt bytes", new RuntimeException("malformed json")));
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        PortalHonorVO result = support.readCache("official:portal:honors", PortalHonorVO.class, "honors");
+
+        assertThat(result).isNull();
+        // 损坏字节触发的 SerializationException 属于数据损坏，应主动删除坏缓存以实现自愈。
+        verify(redisTemplate, times(1)).delete("official:portal:honors");
+    }
+
+    @Test
+    void genericJackson2JsonRedisSerializer_shouldThrowSerializationExceptionOnCorruptBytes() {
+        // 真实序列化器读取损坏字节时抛 SerializationException，这正是 readCache 第一个 catch 需识别并清理坏缓存的触发条件。
+        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer();
+        byte[] corruptBytes = "{not-json".getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> serializer.deserialize(corruptBytes))
+                .isInstanceOf(SerializationException.class);
+    }
+
+    @Test
+    void writeCache_shouldUseEmptyResultTtl_whenResultIsEmpty() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        support.writeCache("official:portal:honors", Collections.emptyList(), true, "honors");
+
+        verify(valueOperations).set(eq("official:portal:honors"), any(), eq(Duration.ofMinutes(1)));
+    }
+
+    @Test
+    void writeCache_shouldUseModuleTtl_whenResultIsNotEmpty() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        PortalCacheSupport support = newPortalCacheSupport(redisTemplate);
+
+        support.writeCache("official:portal:honors", List.of(new PortalHonorVO()), false, "honors");
+
+        verify(valueOperations).set(eq("official:portal:honors"), any(), eq(Duration.ofMinutes(10)));
+    }
+
+    @Test
+    void resolveTtl_shouldUseOverride_whenModuleConfigured() {
+        OfficialProperties properties = new OfficialProperties();
+        properties.getCache().setDefaultTtl(Duration.ofMinutes(10));
+        properties.getCache().setPortalTtlOverrides(Map.of("honors", Duration.ofMinutes(30)));
+        PortalCacheSupport support = new PortalCacheSupport(
+                mock(RedisTemplate.class), new PortalCacheKeyBuilder("official"),
+                mock(PortalCacheInvalidationSupport.class), properties, new ObjectMapper().registerModule(new JavaTimeModule()));
+
+        assertThat(support.resolveTtl("honors")).isEqualTo(Duration.ofMinutes(30));
+    }
+
+    @Test
+    void isEmptyResult_shouldDetectVariousEmptyValues() {
+        PortalCacheSupport support = newPortalCacheSupport(mock(RedisTemplate.class));
+
+        assertThat(support.isEmptyResult(null)).isTrue();
+        assertThat(support.isEmptyResult("")).isTrue();
+        assertThat(support.isEmptyResult(Collections.emptyList())).isTrue();
+        assertThat(support.isEmptyResult(Collections.emptyMap())).isTrue();
+        assertThat(support.isEmptyResult("data")).isFalse();
+        assertThat(support.isEmptyResult(List.of("item"))).isFalse();
+    }
+
+    @Test
+    void invalidatePortalKey_shouldDelegateToInvalidationSupport() {
+        PortalCacheInvalidationSupport invalidationSupport = mock(PortalCacheInvalidationSupport.class);
+        OfficialProperties properties = new OfficialProperties();
+        PortalCacheSupport support = new PortalCacheSupport(
+                mock(RedisTemplate.class), new PortalCacheKeyBuilder("official"),
+                invalidationSupport, properties, new ObjectMapper().registerModule(new JavaTimeModule()));
+
+        support.invalidatePortalKey("honors");
+
+        verify(invalidationSupport).invalidatePortalKey("honors");
+    }
+
+    private PortalCacheSupport newPortalCacheSupport(RedisTemplate<String, Object> redisTemplate) {
+        OfficialProperties properties = new OfficialProperties();
+        properties.getCache().setDefaultTtl(Duration.ofMinutes(10));
+        properties.getCache().setEmptyResultTtl(Duration.ofMinutes(1));
+        return new PortalCacheSupport(
+                redisTemplate,
+                new PortalCacheKeyBuilder("official"),
+                mock(PortalCacheInvalidationSupport.class),
+                properties,
+                new ObjectMapper().registerModule(new JavaTimeModule()));
     }
 
     private static final class RecordingTaskScheduler implements TaskScheduler {

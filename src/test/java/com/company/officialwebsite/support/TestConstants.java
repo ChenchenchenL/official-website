@@ -18,6 +18,11 @@ public final class TestConstants {
     public static final int AUTH_UNAUTHORIZED = ErrorCode.AUTH_UNAUTHORIZED.getCode();
     public static final int AUTH_CSRF_INVALID = ErrorCode.AUTH_CSRF_INVALID.getCode();
     public static final int MEDIA_FILE_INVALID = ErrorCode.MEDIA_FILE_INVALID.getCode();
+    public static final int MEDIA_FILE_SIZE_EXCEEDED = ErrorCode.MEDIA_FILE_SIZE_EXCEEDED.getCode();
+    public static final int MEDIA_FILE_TYPE_UNSUPPORTED = ErrorCode.MEDIA_FILE_TYPE_UNSUPPORTED.getCode();
+    public static final int MEDIA_FILE_SIGNATURE_INVALID = ErrorCode.MEDIA_FILE_SIGNATURE_INVALID.getCode();
+    public static final int MEDIA_UPLOAD_FAILED = ErrorCode.MEDIA_UPLOAD_FAILED.getCode();
+    public static final int MEDIA_STORAGE_WRITE_FAILED = ErrorCode.MEDIA_STORAGE_WRITE_FAILED.getCode();
     public static final int SITE_NAVIGATION_TARGET_INVALID = ErrorCode.SITE_NAVIGATION_TARGET_INVALID.getCode();
     public static final int SITE_NAVIGATION_NAME_DUPLICATE = ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE.getCode();
     public static final int SITE_HOME_BANNER_MEDIA_INVALID = ErrorCode.SITE_HOME_BANNER_MEDIA_INVALID.getCode();
@@ -41,12 +46,31 @@ public final class TestConstants {
     public static final int SITE_RESEARCH_DIRECTION_NOT_FOUND = ErrorCode.SITE_RESEARCH_DIRECTION_NOT_FOUND.getCode();
     public static final int SITE_RESEARCH_DIRECTION_ICON_INVALID = ErrorCode.SITE_RESEARCH_DIRECTION_ICON_INVALID.getCode();
     public static final int SITE_RESEARCH_DIRECTION_TITLE_DUPLICATE = ErrorCode.SITE_RESEARCH_DIRECTION_TITLE_DUPLICATE.getCode();
+    public static final int SITE_TIMELINE_NOT_FOUND = ErrorCode.SITE_TIMELINE_NOT_FOUND.getCode();
+    public static final int SITE_TIMELINE_YEAR_INVALID = ErrorCode.SITE_TIMELINE_YEAR_INVALID.getCode();
+    public static final int SITE_TIMELINE_TITLE_DUPLICATE = ErrorCode.SITE_TIMELINE_TITLE_DUPLICATE.getCode();
+    public static final int SITE_VALUE_CARD_NOT_FOUND = ErrorCode.SITE_VALUE_CARD_NOT_FOUND.getCode();
+    public static final int SITE_VALUE_CARD_ICON_INVALID = ErrorCode.SITE_VALUE_CARD_ICON_INVALID.getCode();
+    public static final int SITE_VALUE_CARD_TITLE_DUPLICATE = ErrorCode.SITE_VALUE_CARD_TITLE_DUPLICATE.getCode();
+    public static final int SITE_PROMISE_CONTENT_NOT_FOUND = ErrorCode.SITE_PROMISE_CONTENT_NOT_FOUND.getCode();
+    public static final int SITE_PROMISE_TAG_NOT_FOUND = ErrorCode.SITE_PROMISE_TAG_NOT_FOUND.getCode();
+    public static final int SITE_PROMISE_TAG_TEXT_DUPLICATE = ErrorCode.SITE_PROMISE_TAG_TEXT_DUPLICATE.getCode();
     public static final int PRODUCT_SOLUTION_NOT_FOUND = ErrorCode.PRODUCT_SOLUTION_NOT_FOUND.getCode();
     public static final int PRODUCT_SOLUTION_ICON_INVALID = ErrorCode.PRODUCT_SOLUTION_ICON_INVALID.getCode();
     public static final int PRODUCT_SOLUTION_NAME_DUPLICATE = ErrorCode.PRODUCT_SOLUTION_NAME_DUPLICATE.getCode();
     public static final int CASE_NOT_FOUND = ErrorCode.CASE_NOT_FOUND.getCode();
     public static final int CASE_LOGO_INVALID = ErrorCode.CASE_LOGO_INVALID.getCode();
     public static final int CASE_TITLE_DUPLICATE = ErrorCode.CASE_TITLE_DUPLICATE.getCode();
+    public static final int LEAD_CONTACT_INFO_NOT_FOUND = ErrorCode.LEAD_CONTACT_INFO_NOT_FOUND.getCode();
+    public static final int LEAD_COOPERATION_DIRECTION_TAG_NOT_FOUND =
+            ErrorCode.LEAD_COOPERATION_DIRECTION_TAG_NOT_FOUND.getCode();
+    public static final int LEAD_COOPERATION_DIRECTION_TAG_TEXT_DUPLICATE =
+            ErrorCode.LEAD_COOPERATION_DIRECTION_TAG_TEXT_DUPLICATE.getCode();
+    public static final int LEAD_RECORD_NOT_FOUND = ErrorCode.LEAD_RECORD_NOT_FOUND.getCode();
+    public static final int LEAD_STATUS_INVALID = ErrorCode.LEAD_STATUS_INVALID.getCode();
+    public static final int LEAD_EXPORT_TOO_LARGE = ErrorCode.LEAD_EXPORT_TOO_LARGE.getCode();
+    public static final int LEAD_SUBMIT_RATE_LIMITED = ErrorCode.LEAD_SUBMIT_RATE_LIMITED.getCode();
+    public static final int COMMON_REQUEST_TOO_FREQUENT = ErrorCode.COMMON_REQUEST_TOO_FREQUENT.getCode();
 
     public static final String DEFAULT_SITE_TITLE = "测试官网标题";
     public static final String DEFAULT_SEO_KEYWORDS = "AI,Data,Testing";

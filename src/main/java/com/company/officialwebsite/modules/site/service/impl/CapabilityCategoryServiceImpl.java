@@ -2,12 +2,10 @@ package com.company.officialwebsite.modules.site.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.site.converter.CapabilityCategoryConverter;
 import com.company.officialwebsite.modules.site.converter.CapabilityItemConverter;
 import com.company.officialwebsite.modules.site.dto.CapabilityCategoryCreateDTO;
@@ -24,16 +22,13 @@ import com.company.officialwebsite.modules.site.vo.CapabilityItemVO;
 import com.company.officialwebsite.modules.site.vo.PortalCapabilityCategoryVO;
 import com.company.officialwebsite.modules.site.vo.PortalCapabilityItemVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -60,11 +55,7 @@ public class CapabilityCategoryServiceImpl implements CapabilityCategoryService 
     private final CapabilityItemConverter capabilityItemConverter;
     private final CapabilityItemService capabilityItemService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final ObjectMapper objectMapper;
-    private final OfficialProperties officialProperties;
+    private final PortalCacheSupport portalCacheSupport;
 
     public CapabilityCategoryServiceImpl(
             CapabilityCategoryMapper capabilityCategoryMapper,
@@ -73,22 +64,14 @@ public class CapabilityCategoryServiceImpl implements CapabilityCategoryService 
             CapabilityItemConverter capabilityItemConverter,
             @Lazy CapabilityItemService capabilityItemService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
-            ObjectMapper objectMapper,
-            OfficialProperties officialProperties) {
+            PortalCacheSupport portalCacheSupport) {
         this.capabilityCategoryMapper = capabilityCategoryMapper;
         this.capabilityItemMapper = capabilityItemMapper;
         this.capabilityCategoryConverter = capabilityCategoryConverter;
         this.capabilityItemConverter = capabilityItemConverter;
         this.capabilityItemService = capabilityItemService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.objectMapper = objectMapper;
-        this.officialProperties = officialProperties;
+        this.portalCacheSupport = portalCacheSupport;
     }
 
     @Override
@@ -261,16 +244,10 @@ public class CapabilityCategoryServiceImpl implements CapabilityCategoryService 
     @Override
     @Transactional(readOnly = true)
     public List<PortalCapabilityCategoryVO> getPortalCapabilities() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalCapabilityCategoryVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal capabilities cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalCapabilityCategoryVO> cached = portalCacheSupport.readListCache(cacheKey, PortalCapabilityCategoryVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         // 1. 查询所有未逻辑删除且可见的分类
@@ -307,12 +284,7 @@ public class CapabilityCategoryServiceImpl implements CapabilityCategoryService 
                 .map(cat -> capabilityCategoryConverter.toPortalVO(cat, groupedPortalItems.getOrDefault(cat.getId(), Collections.emptyList())))
                 .toList();
 
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, result, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal capabilities cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
     }
 
@@ -355,7 +327,7 @@ public class CapabilityCategoryServiceImpl implements CapabilityCategoryService 
     }
 
     private void invalidatePortalCache() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

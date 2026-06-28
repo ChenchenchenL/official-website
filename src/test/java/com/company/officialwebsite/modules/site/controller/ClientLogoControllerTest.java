@@ -105,7 +105,7 @@ class ClientLogoControllerTest extends BaseAdminControllerIntegrationTest {
 
         MediaAssetEntity asset = mediaAssetMapper.selectById(mediaId);
         Assertions.assertEquals(MediaAssetStatusEnum.BOUND.getCode(), asset.getStatus());
-        Assertions.assertEquals(1L, sysAuditLogMapper.selectCount(new LambdaQueryWrapper<>()));
+        Assertions.assertEquals(2L, sysAuditLogMapper.selectCount(new LambdaQueryWrapper<>()));
     }
 
     @Test

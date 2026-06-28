@@ -1,13 +1,11 @@
 package com.company.officialwebsite.modules.site.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.enums.MenuTargetTypeEnum;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.dto.HomeBannerButtonDTO;
@@ -19,17 +17,14 @@ import com.company.officialwebsite.modules.site.vo.AdminHomeBannerVO;
 import com.company.officialwebsite.modules.site.vo.HomeBannerButtonVO;
 import com.company.officialwebsite.modules.site.vo.PortalHomeBannerVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
-import java.time.Duration;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,29 +49,17 @@ public class HomeBannerServiceImpl implements HomeBannerService {
     private final HomeBannerConfigMapper homeBannerConfigMapper;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
 
     public HomeBannerServiceImpl(
             HomeBannerConfigMapper homeBannerConfigMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
-            OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.homeBannerConfigMapper = homeBannerConfigMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
     }
 
     @Override
@@ -123,21 +106,17 @@ public class HomeBannerServiceImpl implements HomeBannerService {
         log.info("update home banner success configId={} previousVersion={} currentVersion={} backgroundImageMediaId={}",
                 entity.getId(), before.getVersion(), after.getVersion(), after.getBackgroundImageMediaId());
         auditLogService.recordGenericOperation(BIZ_MODULE, ACTION_UPDATE, TARGET_TYPE, entity.getId(), before, after);
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_MODULE, CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_MODULE, CACHE_SEGMENT);
         return after;
     }
 
     @Override
     @Transactional(readOnly = true)
     public PortalHomeBannerVO getPortalBanner() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_MODULE, CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(cached, PortalHomeBannerVO.class);
-            }
-        } catch (Exception ex) {
-            log.error("read portal home banner cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_MODULE, CACHE_SEGMENT);
+        PortalHomeBannerVO cached = portalCacheSupport.readCache(cacheKey, PortalHomeBannerVO.class, CACHE_MODULE);
+        if (cached != null) {
+            return cached;
         }
 
         HomeBannerConfigEntity entity = requireConfig();
@@ -161,12 +140,7 @@ public class HomeBannerServiceImpl implements HomeBannerService {
                 entity.getSecondaryAnchorCode(),
                 entity.getSecondaryExternalUrl(),
                 entity.getSecondaryOpenInNewTab()));
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, vo, ttl);
-        } catch (Exception ex) {
-            log.error("write portal home banner cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, vo, portalCacheSupport.isEmptyResult(vo), CACHE_MODULE);
         return vo;
     }
 

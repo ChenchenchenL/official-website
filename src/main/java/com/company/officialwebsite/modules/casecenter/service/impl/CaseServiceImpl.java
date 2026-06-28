@@ -9,8 +9,7 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.casecenter.converter.CaseConverter;
 import com.company.officialwebsite.modules.casecenter.dto.CaseBatchSortDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
@@ -23,8 +22,6 @@ import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
 import com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -36,7 +33,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,11 +70,7 @@ public class CaseServiceImpl implements CaseService {
     private final CaseConverter caseConverter;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
     private final int sortGap;
 
     public CaseServiceImpl(
@@ -86,20 +78,13 @@ public class CaseServiceImpl implements CaseService {
             CaseConverter caseConverter,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.caseMapper = caseMapper;
         this.caseConverter = caseConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -257,16 +242,10 @@ public class CaseServiceImpl implements CaseService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalCaseVO> getPortalCases() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalCaseVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal case cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalCaseVO> cached = portalCacheSupport.readListCache(cacheKey, PortalCaseVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         List<PortalCaseVO> result = caseMapper.selectList(
@@ -278,12 +257,7 @@ public class CaseServiceImpl implements CaseService {
                 .stream()
                 .map(caseConverter::toPortalVO)
                 .toList();
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, result, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal case cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
     }
 
@@ -396,7 +370,7 @@ public class CaseServiceImpl implements CaseService {
     }
 
     private void invalidatePortalCache() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

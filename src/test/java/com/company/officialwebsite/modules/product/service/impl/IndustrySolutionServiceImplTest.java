@@ -17,6 +17,7 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.product.converter.IndustrySolutionConverter;
@@ -26,6 +27,7 @@ import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper
 import com.company.officialwebsite.modules.product.vo.AdminIndustrySolutionVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -77,11 +79,8 @@ class IndustrySolutionServiceImplTest {
                 industrySolutionConverter,
                 mediaAssetService,
                 auditLogService,
-                portalCacheInvalidationSupport,
-                portalCacheKeyBuilder,
-                redisTemplate,
                 officialProperties,
-                new ObjectMapper());
+                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, officialProperties, new ObjectMapper().registerModule(new JavaTimeModule())));
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:industry_solutions");
     }

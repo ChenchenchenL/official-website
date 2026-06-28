@@ -151,7 +151,7 @@ class HomeBannerControllerTest extends BaseAdminControllerIntegrationTest {
                 mediaReferenceMapper.selectCount(new LambdaQueryWrapper<MediaReferenceEntity>()
                         .eq(MediaReferenceEntity::getDeletedMarker, 0L)
                         .eq(MediaReferenceEntity::getBizField, "backgroundImage")));
-        Assertions.assertEquals(1L, sysAuditLogMapper.selectCount(null));
+        Assertions.assertEquals(2L, sysAuditLogMapper.selectCount(null));
     }
 
     @Test

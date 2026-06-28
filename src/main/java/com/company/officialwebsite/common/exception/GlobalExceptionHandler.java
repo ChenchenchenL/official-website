@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,7 +52,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             ConstraintViolationException.class,
             MissingServletRequestParameterException.class,
-            MethodArgumentTypeMismatchException.class
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception ex) {
         return ResponseEntity.badRequest().body(ApiResponse.fail(
@@ -98,12 +100,22 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_CLIENT_LOGO_MEDIA_INVALID
                 || errorCode == ErrorCode.SITE_STRENGTH_METRIC_ICON_INVALID
                 || errorCode == ErrorCode.SITE_AI_CARD_ICON_INVALID
+                || errorCode == ErrorCode.SITE_VALUE_CARD_ICON_INVALID
                 || errorCode == ErrorCode.PRODUCT_LOGO_INVALID
                 || errorCode == ErrorCode.PRODUCT_NAME_DUPLICATE
                 || errorCode == ErrorCode.PRODUCT_SOLUTION_ICON_INVALID
                 || errorCode == ErrorCode.PRODUCT_SOLUTION_NAME_DUPLICATE
                 || errorCode == ErrorCode.CASE_LOGO_INVALID
-                || errorCode == ErrorCode.CASE_TITLE_DUPLICATE) {
+                || errorCode == ErrorCode.CASE_TITLE_DUPLICATE
+                || errorCode == ErrorCode.SITE_TIMELINE_YEAR_INVALID
+                || errorCode == ErrorCode.LEAD_STATUS_INVALID
+                || errorCode == ErrorCode.LEAD_SUBMIT_RATE_LIMITED
+                || errorCode == ErrorCode.LEAD_EXPORT_TOO_LARGE
+                || errorCode == ErrorCode.MEDIA_FILE_SIZE_EXCEEDED
+                || errorCode == ErrorCode.MEDIA_FILE_TYPE_UNSUPPORTED
+                || errorCode == ErrorCode.MEDIA_FILE_SIGNATURE_INVALID
+                || errorCode == ErrorCode.MEDIA_UPLOAD_FAILED
+                || errorCode == ErrorCode.MEDIA_STORAGE_WRITE_FAILED) {
             return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
@@ -111,6 +123,9 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_CLIENT_LOGO_NAME_DUPLICATE
                 || errorCode == ErrorCode.SITE_STRENGTH_METRIC_LABEL_DUPLICATE
                 || errorCode == ErrorCode.SITE_AI_CARD_NAME_DUPLICATE
+                || errorCode == ErrorCode.SITE_VALUE_CARD_TITLE_DUPLICATE
+                || errorCode == ErrorCode.SITE_PROMISE_TAG_TEXT_DUPLICATE
+                || errorCode == ErrorCode.LEAD_COOPERATION_DIRECTION_TAG_TEXT_DUPLICATE
                 || errorCode == ErrorCode.SITE_CAPABILITY_CATEGORY_NAME_DUPLICATE
                 || errorCode == ErrorCode.SITE_CAPABILITY_ITEM_NAME_DUPLICATE
                 || errorCode == ErrorCode.COMMON_DUPLICATE_DATA) {
@@ -125,7 +140,14 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_CAPABILITY_ITEM_NOT_FOUND
                 || errorCode == ErrorCode.PRODUCT_NOT_FOUND
                 || errorCode == ErrorCode.PRODUCT_SOLUTION_NOT_FOUND
-                || errorCode == ErrorCode.CASE_NOT_FOUND) {
+                || errorCode == ErrorCode.CASE_NOT_FOUND
+                || errorCode == ErrorCode.SITE_TIMELINE_NOT_FOUND
+                || errorCode == ErrorCode.SITE_VALUE_CARD_NOT_FOUND
+                || errorCode == ErrorCode.SITE_PROMISE_CONTENT_NOT_FOUND
+                || errorCode == ErrorCode.SITE_PROMISE_TAG_NOT_FOUND
+                || errorCode == ErrorCode.LEAD_CONTACT_INFO_NOT_FOUND
+                || errorCode == ErrorCode.LEAD_COOPERATION_DIRECTION_TAG_NOT_FOUND
+                || errorCode == ErrorCode.LEAD_RECORD_NOT_FOUND) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

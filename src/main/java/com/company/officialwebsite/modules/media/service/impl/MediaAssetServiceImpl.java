@@ -11,58 +11,84 @@ import com.company.officialwebsite.modules.media.entity.MediaReferenceEntity;
 import com.company.officialwebsite.modules.media.mapper.MediaAssetMapper;
 import com.company.officialwebsite.modules.media.mapper.MediaReferenceMapper;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
+import com.company.officialwebsite.modules.media.support.MediaValidationSupport;
 import com.company.officialwebsite.modules.media.vo.MediaUploadVO;
+import com.company.officialwebsite.modules.system.service.AuditLogService;
 import java.io.IOException;
-import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * MediaAssetServiceImpl：实现后台图片上传和媒体引用绑定规则。
+ * MediaAssetServiceImpl：实现统一媒体上传、引用校验与业务绑定规则。
  */
 @Service
 public class MediaAssetServiceImpl implements MediaAssetService {
+
+    private static final Logger log = LoggerFactory.getLogger(MediaAssetServiceImpl.class);
+
+    private static final String BIZ_MODULE = "MEDIA";
+    private static final String TARGET_TYPE = "MEDIA_ASSET";
+    private static final String ACTION_UPLOAD = "UPLOAD_MEDIA";
 
     private final MediaAssetMapper mediaAssetMapper;
     private final MediaReferenceMapper mediaReferenceMapper;
     private final LocalMediaStorageService localMediaStorageService;
     private final OfficialProperties officialProperties;
+    private final MediaValidationSupport mediaValidationSupport;
+    private final AuditLogService auditLogService;
 
     public MediaAssetServiceImpl(
             MediaAssetMapper mediaAssetMapper,
             MediaReferenceMapper mediaReferenceMapper,
             LocalMediaStorageService localMediaStorageService,
-            OfficialProperties officialProperties) {
+            OfficialProperties officialProperties,
+            MediaValidationSupport mediaValidationSupport,
+            AuditLogService auditLogService) {
         this.mediaAssetMapper = mediaAssetMapper;
         this.mediaReferenceMapper = mediaReferenceMapper;
         this.localMediaStorageService = localMediaStorageService;
         this.officialProperties = officialProperties;
+        this.mediaValidationSupport = mediaValidationSupport;
+        this.auditLogService = auditLogService;
     }
 
     @Override
     @Transactional
     public MediaUploadVO uploadImage(MultipartFile file) {
+        return upload(file);
+    }
+
+    @Override
+    @Transactional
+    public MediaUploadVO upload(MultipartFile file) {
         byte[] fileBytes;
         try {
             fileBytes = file == null ? new byte[0] : file.getBytes();
         } catch (IOException ex) {
-            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID);
+            log.warn("read upload file bytes failed", ex);
+            throw new BusinessException(ErrorCode.MEDIA_UPLOAD_FAILED, "读取上传文件失败");
         }
-        validateImage(file, fileBytes);
+
+        String mediaType = mediaValidationSupport.validate(file, fileBytes);
 
         String originalFilename = file.getOriginalFilename();
         String extension = extractExtension(originalFilename);
         String relativePath;
         try {
-            relativePath = localMediaStorageService.storeImage(fileBytes, extension);
+            relativePath = localMediaStorageService.storeFile(fileBytes, extension);
         } catch (IOException ex) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, ErrorCode.SYSTEM_ERROR.getDefaultMessage(), ex);
+            log.error("store upload file failed", ex);
+            throw new BusinessException(ErrorCode.MEDIA_STORAGE_WRITE_FAILED, "文件存储失败");
         }
 
         MediaAssetEntity entity = new MediaAssetEntity();
-        entity.setMediaType("IMAGE");
+        entity.setMediaType(mediaType);
         entity.setStatus(MediaAssetStatusEnum.TEMPORARY.getCode());
         entity.setOriginalFilename(originalFilename);
         entity.setContentType(file.getContentType());
@@ -74,15 +100,15 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             mediaAssetMapper.insert(entity);
         } catch (RuntimeException ex) {
             localMediaStorageService.deleteQuietly(relativePath);
+            log.error("persist media asset failed, orphan file cleaned path={}", relativePath, ex);
             throw ex;
         }
 
-        MediaUploadVO response = new MediaUploadVO();
-        response.setMediaId(entity.getId());
-        response.setUrl(entity.getPublicUrl());
-        response.setContentType(entity.getContentType());
-        response.setSize(entity.getFileSize());
-        return response;
+        log.info("upload media success id={} mediaType={} originalFilename={} size={}",
+                entity.getId(), mediaType, originalFilename, entity.getFileSize());
+        recordAudit(entity);
+
+        return buildUploadVO(entity);
     }
 
     @Override
@@ -167,75 +193,50 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         mediaAssetMapper.updateById(entity);
     }
 
-    /**
-     * 同时校验扩展名、MIME 和内容签名，防止伪装脚本或损坏文件进入媒体库。
-     */
-    private void validateImage(MultipartFile file, byte[] fileBytes) {
-        if (file == null || file.isEmpty() || fileBytes.length == 0) {
-            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID);
-        }
-        if (file.getSize() > officialProperties.getStorage().getMaxImageSizeBytes()) {
-            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID, "图片大小超出限制");
-        }
-        String contentType = file.getContentType();
-        if (!StringUtils.hasText(contentType) || !contentType.startsWith("image/")) {
-            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID);
-        }
-        String extension = extractExtension(file.getOriginalFilename());
-        boolean supportedExtension = "png".equals(extension)
-                || "jpg".equals(extension)
-                || "jpeg".equals(extension)
-                || "webp".equals(extension);
-        if (!supportedExtension || !matchesSignature(extension, fileBytes)) {
-            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID);
-        }
-    }
-
-    private boolean matchesSignature(String extension, byte[] fileBytes) {
-        return switch (extension) {
-            case "png" -> hasPrefix(fileBytes, new int[] {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
-            case "jpg", "jpeg" -> hasPrefix(fileBytes, new int[] {0xFF, 0xD8, 0xFF});
-            case "webp" -> hasWebpSignature(fileBytes);
-            default -> false;
-        };
-    }
-
-    private boolean hasPrefix(byte[] fileBytes, int[] prefix) {
-        if (fileBytes.length < prefix.length) {
-            return false;
-        }
-        for (int index = 0; index < prefix.length; index++) {
-            if ((fileBytes[index] & 0xFF) != prefix[index]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean hasWebpSignature(byte[] fileBytes) {
-        if (fileBytes.length < 12) {
-            return false;
-        }
-        return fileBytes[0] == 'R'
-                && fileBytes[1] == 'I'
-                && fileBytes[2] == 'F'
-                && fileBytes[3] == 'F'
-                && fileBytes[8] == 'W'
-                && fileBytes[9] == 'E'
-                && fileBytes[10] == 'B'
-                && fileBytes[11] == 'P';
-    }
-
-    private String extractExtension(String filename) {
-        if (!StringUtils.hasText(filename) || !filename.contains(".")) {
-            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID);
-        }
-        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+    private MediaUploadVO buildUploadVO(MediaAssetEntity entity) {
+        MediaUploadVO vo = new MediaUploadVO();
+        vo.setMediaId(entity.getId());
+        vo.setMediaType(entity.getMediaType());
+        vo.setOriginalFilename(entity.getOriginalFilename());
+        vo.setContentType(entity.getContentType());
+        vo.setSize(entity.getFileSize());
+        vo.setPath(entity.getStoragePath());
+        vo.setUrl(entity.getPublicUrl());
+        vo.setAbsoluteUrl(buildAbsoluteUrl(entity.getPublicUrl()));
+        return vo;
     }
 
     private String buildPublicUrl(String relativePath) {
         String prefix = officialProperties.getStorage().getPublicUrlPrefix();
         String normalizedPrefix = prefix.endsWith("/") ? prefix : prefix + "/";
         return normalizedPrefix + relativePath;
+    }
+
+    private String buildAbsoluteUrl(String publicUrl) {
+        String domain = officialProperties.getStorage().getPublicDomain();
+        if (!StringUtils.hasText(domain)) {
+            return null;
+        }
+        String normalizedDomain = domain.endsWith("/") ? domain.substring(0, domain.length() - 1) : domain;
+        return normalizedDomain + publicUrl;
+    }
+
+    private String extractExtension(String filename) {
+        if (!StringUtils.hasText(filename) || !filename.contains(".")) {
+            throw new BusinessException(ErrorCode.MEDIA_FILE_INVALID, "文件名缺少扩展名");
+        }
+        return filename.substring(filename.lastIndexOf('.') + 1);
+    }
+
+    private void recordAudit(MediaAssetEntity entity) {
+        Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("mediaId", entity.getId());
+        snapshot.put("mediaType", entity.getMediaType());
+        snapshot.put("originalFilename", entity.getOriginalFilename());
+        snapshot.put("contentType", entity.getContentType());
+        snapshot.put("fileSize", entity.getFileSize());
+        snapshot.put("path", entity.getStoragePath());
+        snapshot.put("url", entity.getPublicUrl());
+        auditLogService.recordGenericOperation(BIZ_MODULE, ACTION_UPLOAD, TARGET_TYPE, entity.getId(), null, snapshot);
     }
 }

@@ -90,7 +90,9 @@ public class PortalCacheInvalidationSupport {
 
     private void deleteNow(List<String> keys) {
         try {
-            redisTemplate.delete(keys);
+            Long deleted = redisTemplate.delete(keys);
+            log.info("portal cache invalidated keys={} deleted={} traceId={}",
+                    keys, deleted, TraceContext.getTraceId());
         } catch (Exception ex) {
             log.error("cache invalidation failed keys={} traceId={}", keys, TraceContext.getTraceId(), ex);
         }

@@ -431,6 +431,8 @@ class CapabilityControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void getPortalCapabilities_shouldEvictCache_uponWriteOperations() throws Exception {
         MockHttpSession session = loginAsAdmin();
+        String cacheKey = portalCacheKeyBuilder.build(CACHE_KEY_SEGMENT);
+        stabilizePortalCacheKey(cacheKey);
 
         // 1. 创建前台可见数据
         CapabilityCategoryEntity cat = new CapabilityCategoryEntity();
@@ -447,7 +449,6 @@ class CapabilityControllerTest extends BaseAdminControllerIntegrationTest {
         capabilityItemMapper.insert(item);
 
         // 2. 调用前台接口并验证数据及缓存被写入
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_KEY_SEGMENT);
         Assertions.assertNull(redisTemplate.opsForValue().get(cacheKey));
 
         mockMvc.perform(get("/portal/api/site/capabilities"))
@@ -479,5 +480,14 @@ class CapabilityControllerTest extends BaseAdminControllerIntegrationTest {
 
         // 验证缓存已被清除
         Assertions.assertNull(redisTemplate.opsForValue().get(cacheKey));
+    }
+
+    /**
+     * 延迟二次删除会跨测试异步执行，这里先等待上个用例遗留的任务完成，再清理一次当前 key，
+     * 避免把本用例刚写入的 portal 缓存误删掉导致断言抖动。
+     */
+    private void stabilizePortalCacheKey(String cacheKey) throws InterruptedException {
+        Thread.sleep(1200L);
+        redisTemplate.delete(cacheKey);
     }
 }

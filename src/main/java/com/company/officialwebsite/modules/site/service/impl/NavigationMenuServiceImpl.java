@@ -7,8 +7,7 @@ import com.company.officialwebsite.common.enums.MenuLevelEnum;
 import com.company.officialwebsite.common.enums.MenuTargetTypeEnum;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.site.dto.NavigationMenuCreateRequestDTO;
 import com.company.officialwebsite.modules.site.dto.NavigationMenuOrderRequestDTO;
 import com.company.officialwebsite.modules.site.dto.NavigationMenuUpdateRequestDTO;
@@ -19,10 +18,8 @@ import com.company.officialwebsite.modules.site.service.NavigationMenuService;
 import com.company.officialwebsite.modules.site.vo.AdminNavigationMenuVO;
 import com.company.officialwebsite.modules.site.vo.PortalNavigationMenuVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -37,7 +34,6 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,33 +55,23 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
     private static final long ROOT_PARENT_ID = 0L;
     private static final byte MAX_MENU_DEPTH = 2;
     private static final int MAX_ANCHOR_LENGTH = 64;
-    private static final int SORT_GAP = 10;
     private static final Pattern ANCHOR_PATTERN =
             Pattern.compile("^[A-Za-z][A-Za-z0-9_-]{0," + (MAX_ANCHOR_LENGTH - 1) + "}$");
 
     private final NavigationMenuMapper navigationMenuMapper;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
+    private final int sortGap;
 
     public NavigationMenuServiceImpl(
             NavigationMenuMapper navigationMenuMapper,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.navigationMenuMapper = navigationMenuMapper;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
+        this.sortGap = officialProperties.getCache().getSortGap();
     }
 
     @Override
@@ -212,25 +198,14 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalNavigationMenuVO> getPortalMenuTree() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalNavigationMenuVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal navigation cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalNavigationMenuVO> cached = portalCacheSupport.readListCache(cacheKey, PortalNavigationMenuVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         List<PortalNavigationMenuVO> menuTree = buildPortalTree(listVisibleMenus());
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, menuTree, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal navigation cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, menuTree, portalCacheSupport.isEmptyResult(menuTree), CACHE_SEGMENT);
         return menuTree;
     }
 
@@ -437,10 +412,10 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
                 .orderByDesc(NavigationMenuEntity::getId)
                 .last("limit 1"));
         int current = lastSibling == null || lastSibling.getSortOrder() == null ? 0 : lastSibling.getSortOrder();
-        if (current > Integer.MAX_VALUE - SORT_GAP) {
+        if (current > Integer.MAX_VALUE - sortGap) {
             throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "同级菜单排序值已达到上限");
         }
-        return current + SORT_GAP;
+        return current + sortGap;
     }
 
     private List<AdminNavigationMenuVO> buildAdminTree(List<NavigationMenuEntity> entities) {
@@ -579,7 +554,7 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
     }
 
     private void invalidatePortalNavigation() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void assertVersion(Integer currentVersion, Integer requestVersion) {
@@ -646,7 +621,7 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
 
     private int sortOrderForIndex(int index) {
         try {
-            return Math.multiplyExact(Math.addExact(index, 1), SORT_GAP);
+            return Math.multiplyExact(Math.addExact(index, 1), sortGap);
         } catch (ArithmeticException ex) {
             throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "排序值超出允许范围");
         }

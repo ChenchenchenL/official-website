@@ -6,8 +6,7 @@ import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.dto.StrengthMetricBatchSortRequestDTO;
@@ -19,8 +18,6 @@ import com.company.officialwebsite.modules.site.service.StrengthMetricService;
 import com.company.officialwebsite.modules.site.vo.AdminStrengthMetricVO;
 import com.company.officialwebsite.modules.site.vo.PortalStrengthMetricVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -33,7 +30,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>关键约束：
  * <ul>
- *   <li>写操作全部在事务内完成，缓存失效通过 PortalCacheInvalidationSupport 在事务提交后触发。</li>
+ *   <li>写操作全部在事务内完成，缓存失效通过 PortalCacheSupport 在事务提交后触发。</li>
  *   <li>iconId 允许为 null，媒体绑定/解绑逻辑根据 old/new iconId 变化情况精确处理。</li>
  *   <li>label 唯一性由数据库 uk_cms_strength_metric_label_deleted 保障，DuplicateKeyException 映射为业务异常。</li>
  *   <li>批量排序使用有序 ID 列表模式，后端计算 sort_order = (index+1) * GAP，防止并发排序值冲突。</li>
@@ -68,29 +64,18 @@ public class StrengthMetricServiceImpl implements StrengthMetricService {
     private final StrengthMetricMapper strengthMetricMapper;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
 
     public StrengthMetricServiceImpl(
             StrengthMetricMapper strengthMetricMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.strengthMetricMapper = strengthMetricMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -217,27 +202,14 @@ public class StrengthMetricServiceImpl implements StrengthMetricService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalStrengthMetricVO> getPortalMetrics() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        // 优先读缓存，读取失败时降级走数据库，不阻断请求
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalStrengthMetricVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal strength metrics cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalStrengthMetricVO> cached = portalCacheSupport.readListCache(cacheKey, PortalStrengthMetricVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         List<PortalStrengthMetricVO> result = listVisibleMetrics().stream().map(this::toPortalVO).toList();
-        // 写缓存失败不影响主流程
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, result, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal strength metrics cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
     }
 
@@ -496,10 +468,10 @@ public class StrengthMetricServiceImpl implements StrengthMetricService {
 
     /**
      * 触发 Portal 缓存失效，必须在事务内调用。
-     * PortalCacheInvalidationSupport 内部通过 afterCommit 保证提交后才删除缓存。
+     * PortalCacheSupport 内部通过 afterCommit 保证提交后才删除缓存。
      */
     private void invalidatePortalMetrics() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

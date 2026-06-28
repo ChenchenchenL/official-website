@@ -5,8 +5,7 @@ import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.site.dto.HomeMetricCardCreateRequestDTO;
 import com.company.officialwebsite.modules.site.dto.HomeMetricCardOrderRequestDTO;
 import com.company.officialwebsite.modules.site.dto.HomeMetricCardUpdateRequestDTO;
@@ -17,8 +16,6 @@ import com.company.officialwebsite.modules.site.service.HomeMetricCardService;
 import com.company.officialwebsite.modules.site.vo.AdminHomeMetricCardVO;
 import com.company.officialwebsite.modules.site.vo.PortalHomeMetricCardVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -30,7 +27,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,7 +46,6 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
     private static final String ACTION_CHANGE_VISIBILITY = "CHANGE_HOME_METRIC_CARD_VISIBILITY";
     private static final String ACTION_DELETE = "DELETE_HOME_METRIC_CARD";
     private static final String ACTION_REORDER = "REORDER_HOME_METRIC_CARD";
-    private static final int SORT_GAP = 10;
     private static final int MAX_METRIC_INTEGER_DIGITS = 12;
     private static final int MAX_METRIC_DECIMAL_DIGITS = 2;
     private static final Pattern METRIC_VALUE_PATTERN =
@@ -59,27 +54,18 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
 
     private final HomeMetricCardMapper homeMetricCardMapper;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
+    private final int sortGap;
 
     public HomeMetricCardServiceImpl(
             HomeMetricCardMapper homeMetricCardMapper,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.homeMetricCardMapper = homeMetricCardMapper;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
+        this.sortGap = officialProperties.getCache().getSortGap();
     }
 
     @Override
@@ -197,28 +183,16 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalHomeMetricCardVO> getPortalMetricCards() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_MODULE, CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory()
-                                .constructCollectionType(List.class, PortalHomeMetricCardVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal home metrics cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_MODULE, CACHE_SEGMENT);
+        List<PortalHomeMetricCardVO> cached = portalCacheSupport.readListCache(cacheKey, PortalHomeMetricCardVO.class, CACHE_MODULE);
+        if (cached != null) {
+            return cached;
         }
 
         List<PortalHomeMetricCardVO> metricCards = listVisibleMetricCards().stream()
                 .map(this::toPortalVO)
                 .toList();
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, metricCards, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal home metrics cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, metricCards, portalCacheSupport.isEmptyResult(metricCards), CACHE_MODULE);
         return metricCards;
     }
 
@@ -314,7 +288,7 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
     }
 
     private void invalidatePortalMetrics() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_MODULE, CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_MODULE, CACHE_SEGMENT);
     }
 
     private void assertVersion(Integer currentVersion, Integer requestVersion) {
@@ -373,15 +347,15 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
                 .orderByDesc(HomeMetricCardEntity::getId)
                 .last("limit 1"));
         int current = last == null || last.getSortOrder() == null ? 0 : last.getSortOrder();
-        if (current > Integer.MAX_VALUE - SORT_GAP) {
+        if (current > Integer.MAX_VALUE - sortGap) {
             throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "卡片排序值已达到上限");
         }
-        return current + SORT_GAP;
+        return current + sortGap;
     }
 
     private int sortOrderForIndex(int index) {
         try {
-            return Math.multiplyExact(Math.addExact(index, 1), SORT_GAP);
+            return Math.multiplyExact(Math.addExact(index, 1), sortGap);
         } catch (ArithmeticException ex) {
             throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "排序值超出允许范围");
         }

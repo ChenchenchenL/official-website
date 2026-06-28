@@ -5,8 +5,7 @@ import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.dto.HonorBatchSortRequestDTO;
@@ -19,8 +18,6 @@ import com.company.officialwebsite.modules.site.service.HonorService;
 import com.company.officialwebsite.modules.site.vo.AdminHonorVO;
 import com.company.officialwebsite.modules.site.vo.PortalHonorVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -32,7 +29,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,34 +47,24 @@ public class HonorServiceImpl implements HonorService {
     private static final String ACTION_DELETE = "DELETE_HONOR";
     private static final String ACTION_REORDER = "REORDER_HONOR";
     private static final String MEDIA_BIZ_FIELD = "icon";
-    private static final int SORT_GAP = 10;
 
     private final HonorMapper honorMapper;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
+    private final int sortGap;
 
     public HonorServiceImpl(
             HonorMapper honorMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.honorMapper = honorMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
+        this.sortGap = officialProperties.getCache().getSortGap();
     }
 
     @Override
@@ -176,25 +162,14 @@ public class HonorServiceImpl implements HonorService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalHonorVO> getPortalHonors() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalHonorVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal honor cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalHonorVO> cached = portalCacheSupport.readListCache(cacheKey, PortalHonorVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         List<PortalHonorVO> honors = listVisibleHonors().stream().map(this::toPortalVO).toList();
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, honors, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal honor cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, honors, portalCacheSupport.isEmptyResult(honors), CACHE_SEGMENT);
         return honors;
     }
 
@@ -339,15 +314,15 @@ public class HonorServiceImpl implements HonorService {
                 .orderByDesc(HonorEntity::getId)
                 .last("limit 1"));
         int current = last == null || last.getSortOrder() == null ? 0 : last.getSortOrder();
-        if (current > Integer.MAX_VALUE - SORT_GAP) {
+        if (current > Integer.MAX_VALUE - sortGap) {
             throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "荣誉排序值已达到上限");
         }
-        return current + SORT_GAP;
+        return current + sortGap;
     }
 
     private int sortOrderForIndex(int index) {
         try {
-            return Math.multiplyExact(Math.addExact(index, 1), SORT_GAP);
+            return Math.multiplyExact(Math.addExact(index, 1), sortGap);
         } catch (ArithmeticException ex) {
             throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "排序值超出允许范围");
         }
@@ -360,7 +335,7 @@ public class HonorServiceImpl implements HonorService {
     }
 
     private void invalidatePortalHonors() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

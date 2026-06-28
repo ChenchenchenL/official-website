@@ -24,11 +24,11 @@ public class AdminMediaAssetController {
     }
 
     /**
-     * 上传站点配置等后台模块可复用的公共图片资源。
+     * 上传站点配置等后台模块可复用的公共图片或文档资源。
      */
     @PostMapping
     @PreAuthorize("hasRole('ADMINISTRATOR')")
-    public ApiResponse<MediaUploadVO> uploadImage(@RequestPart("file") MultipartFile file) {
-        return ApiResponse.success(mediaAssetService.uploadImage(file));
+    public ApiResponse<MediaUploadVO> uploadAsset(@RequestPart("file") MultipartFile file) {
+        return ApiResponse.success(mediaAssetService.upload(file));
     }
 }

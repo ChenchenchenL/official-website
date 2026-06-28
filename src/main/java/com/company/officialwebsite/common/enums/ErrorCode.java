@@ -53,6 +53,18 @@ public enum ErrorCode {
     SITE_RESEARCH_DIRECTION_ICON_INVALID(31102, "SITE", "研发方向 Icon 媒体 ID 不可用"),
     SITE_RESEARCH_DIRECTION_TITLE_DUPLICATE(31103, "SITE", "研发方向中文标题在活跃数据中已存在"),
 
+    SITE_TIMELINE_NOT_FOUND(31201, "SITE", "时间轴节点不存在或已删除"),
+    SITE_TIMELINE_YEAR_INVALID(31202, "SITE", "年份格式不合法"),
+    SITE_TIMELINE_TITLE_DUPLICATE(31203, "SITE", "同一年份标题重复"),
+
+    SITE_VALUE_CARD_NOT_FOUND(31301, "SITE", "核心价值观卡片不存在或已被逻辑删除"),
+    SITE_VALUE_CARD_ICON_INVALID(31302, "SITE", "核心价值观图标资源不可用"),
+    SITE_VALUE_CARD_TITLE_DUPLICATE(31303, "SITE", "核心价值观标题已存在"),
+
+    SITE_PROMISE_CONTENT_NOT_FOUND(31401, "SITE", "我们的承诺主体文案配置不存在"),
+    SITE_PROMISE_TAG_NOT_FOUND(31402, "SITE", "我们的承诺标签不存在或已被逻辑删除"),
+    SITE_PROMISE_TAG_TEXT_DUPLICATE(31403, "SITE", "我们的承诺标签文本重复"),
+
     SITE_CAPABILITY_CATEGORY_NOT_FOUND(30801, "SITE", "核心能力底座分类记录不存在或已被逻辑删除"),
     SITE_CAPABILITY_CATEGORY_NAME_DUPLICATE(30802, "SITE", "已存在重名底座分类名称"),
     SITE_CAPABILITY_ITEM_NOT_FOUND(30901, "SITE", "底座子项记录不存在或已被逻辑删除"),
@@ -70,6 +82,19 @@ public enum ErrorCode {
     CASE_TITLE_DUPLICATE(40203, "CASE", "标杆案例标题已存在"),
 
     MEDIA_FILE_INVALID(60001, "MEDIA", "上传文件不符合要求"),
+    MEDIA_FILE_SIZE_EXCEEDED(60002, "MEDIA", "文件大小超出限制"),
+    MEDIA_FILE_TYPE_UNSUPPORTED(60003, "MEDIA", "文件类型不支持"),
+    MEDIA_FILE_SIGNATURE_INVALID(60004, "MEDIA", "文件内容签名不合法"),
+    MEDIA_UPLOAD_FAILED(60005, "MEDIA", "文件上传失败"),
+    MEDIA_STORAGE_WRITE_FAILED(60006, "MEDIA", "文件存储失败"),
+
+    LEAD_CONTACT_INFO_NOT_FOUND(70001, "LEAD", "基础联系方式配置不存在"),
+    LEAD_COOPERATION_DIRECTION_TAG_NOT_FOUND(70002, "LEAD", "合作方向标签不存在或已被逻辑删除"),
+    LEAD_COOPERATION_DIRECTION_TAG_TEXT_DUPLICATE(70003, "LEAD", "合作方向标签文本重复"),
+    LEAD_RECORD_NOT_FOUND(70004, "LEAD", "线索记录不存在或已删除"),
+    LEAD_STATUS_INVALID(70005, "LEAD", "线索状态不合法"),
+    LEAD_EXPORT_TOO_LARGE(70006, "LEAD", "导出数据量超过上限"),
+    LEAD_SUBMIT_RATE_LIMITED(70007, "LEAD", "同一 IP 提交过于频繁"),
 
     SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
 

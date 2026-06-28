@@ -9,6 +9,9 @@
 /workspace/src/test/java/com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/casecenter/controller/CaseControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/casecenter/service/impl/CaseServiceImplTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/lead/controller/ContactInfoControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/lead/controller/CooperationDirectionTagControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/lead/controller/LeadControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/media/controller/AdminMediaAssetControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/product/controller/IndustrySolutionControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/product/controller/ProductControllerTest.java
@@ -21,9 +24,12 @@
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/HonorControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/NavigationMenuControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/PartnerUniversityControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/PromiseControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/ResearchDirectionControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/SiteConfigControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/site/controller/StrengthMetricControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/TimelineEventControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/site/controller/ValueCardControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/system/controller/AdminAuthControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/system/mapper/SysUserMapperIntegrationTest.java
 /workspace/src/test/java/com/company/officialwebsite/support/BaseAdminControllerIntegrationTest.java

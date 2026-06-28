@@ -7,8 +7,7 @@ import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
-import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
+import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.converter.PartnerUniversityConverter;
@@ -21,8 +20,6 @@ import com.company.officialwebsite.modules.site.service.PartnerUniversityService
 import com.company.officialwebsite.modules.site.vo.AdminPartnerUniversityVO;
 import com.company.officialwebsite.modules.site.vo.PortalPartnerUniversityVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -33,7 +30,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,11 +53,7 @@ public class PartnerUniversityServiceImpl implements PartnerUniversityService {
     private final PartnerUniversityConverter partnerUniversityConverter;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
-    private final PortalCacheInvalidationSupport portalCacheInvalidationSupport;
-    private final PortalCacheKeyBuilder portalCacheKeyBuilder;
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final OfficialProperties officialProperties;
-    private final ObjectMapper objectMapper;
+    private final PortalCacheSupport portalCacheSupport;
     private final int sortGap;
 
     public PartnerUniversityServiceImpl(
@@ -69,20 +61,13 @@ public class PartnerUniversityServiceImpl implements PartnerUniversityService {
             PartnerUniversityConverter partnerUniversityConverter,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheInvalidationSupport portalCacheInvalidationSupport,
-            PortalCacheKeyBuilder portalCacheKeyBuilder,
-            RedisTemplate<String, Object> redisTemplate,
             OfficialProperties officialProperties,
-            ObjectMapper objectMapper) {
+            PortalCacheSupport portalCacheSupport) {
         this.partnerUniversityMapper = partnerUniversityMapper;
         this.partnerUniversityConverter = partnerUniversityConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
-        this.portalCacheInvalidationSupport = portalCacheInvalidationSupport;
-        this.portalCacheKeyBuilder = portalCacheKeyBuilder;
-        this.redisTemplate = redisTemplate;
-        this.officialProperties = officialProperties;
-        this.objectMapper = objectMapper;
+        this.portalCacheSupport = portalCacheSupport;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -205,25 +190,14 @@ public class PartnerUniversityServiceImpl implements PartnerUniversityService {
     @Override
     @Transactional(readOnly = true)
     public List<PortalPartnerUniversityVO> getPortalUniversities() {
-        String cacheKey = portalCacheKeyBuilder.build(CACHE_SEGMENT);
-        try {
-            Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached != null) {
-                return objectMapper.convertValue(
-                        cached,
-                        objectMapper.getTypeFactory().constructCollectionType(List.class, PortalPartnerUniversityVO.class));
-            }
-        } catch (Exception ex) {
-            log.warn("read portal partner universities cache failed key={}", cacheKey, ex);
+        String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
+        List<PortalPartnerUniversityVO> cached = portalCacheSupport.readListCache(cacheKey, PortalPartnerUniversityVO.class, CACHE_SEGMENT);
+        if (cached != null) {
+            return cached;
         }
 
         List<PortalPartnerUniversityVO> result = listVisibleUniversities().stream().map(partnerUniversityConverter::toPortalVO).toList();
-        try {
-            Duration ttl = officialProperties.getCache().getDefaultTtl();
-            redisTemplate.opsForValue().set(cacheKey, result, ttl);
-        } catch (Exception ex) {
-            log.warn("write portal partner universities cache failed key={}", cacheKey, ex);
-        }
+        portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
     }
 
@@ -337,7 +311,7 @@ public class PartnerUniversityServiceImpl implements PartnerUniversityService {
     }
 
     private void invalidatePortalCache() {
-        portalCacheInvalidationSupport.invalidatePortalKey(CACHE_SEGMENT);
+        portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

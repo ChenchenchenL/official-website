@@ -176,7 +176,7 @@ class StrengthMetricControllerTest extends BaseAdminControllerIntegrationTest {
         Assertions.assertEquals(MediaAssetStatusEnum.BOUND.getCode(),
                 mediaAssetMapper.selectById(mediaId).getStatus());
         // 验证审计日志写入
-        Assertions.assertEquals(1L, sysAuditLogMapper.selectCount(new LambdaQueryWrapper<>()));
+        Assertions.assertEquals(2L, sysAuditLogMapper.selectCount(new LambdaQueryWrapper<>()));
     }
 
     @Test

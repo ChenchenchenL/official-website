@@ -112,7 +112,7 @@ class PartnerUniversityControllerTest extends BaseAdminControllerIntegrationTest
         JsonNode node = objectMapper.readTree(result.getResponse().getContentAsString());
         Assertions.assertTrue(node.path("data").isArray());
         Assertions.assertEquals(MediaAssetStatusEnum.BOUND.getCode(), mediaAssetMapper.selectById(mediaId).getStatus());
-        Assertions.assertEquals(1L, sysAuditLogMapper.selectCount(null));
+        Assertions.assertEquals(2L, sysAuditLogMapper.selectCount(null));
         Assertions.assertNull(redisTemplate.opsForValue().get(portalCacheKeyBuilder.build("partner_universities")));
     }
 

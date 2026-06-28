@@ -1,13 +1,18 @@
 com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest$ScheduledTask.class
 com/company/officialwebsite/common/config/AsyncConfigurationTest$AsyncTaskSnapshot.class
 com/company/officialwebsite/modules/site/controller/StrengthMetricControllerTest.class
+com/company/officialwebsite/modules/lead/controller/LeadControllerTest.class
+com/company/officialwebsite/modules/lead/controller/CooperationDirectionTagControllerTest.class
 com/company/officialwebsite/common/config/CacheConfigurationTest.class
 com/company/officialwebsite/modules/system/controller/AdminAuthControllerTest.class
+com/company/officialwebsite/modules/site/controller/ValueCardControllerTest.class
 com/company/officialwebsite/modules/site/controller/ClientLogoControllerTest.class
 com/company/officialwebsite/common/config/JacksonConfigurationTest.class
 com/company/officialwebsite/modules/product/service/impl/IndustrySolutionServiceImplTest.class
+com/company/officialwebsite/modules/site/controller/PromiseControllerTest.class
 com/company/officialwebsite/modules/site/controller/HomeMetricCardControllerTest.class
 com/company/officialwebsite/modules/site/controller/ResearchDirectionControllerTest.class
+com/company/officialwebsite/modules/lead/controller/ContactInfoControllerTest.class
 com/company/officialwebsite/modules/site/controller/NavigationMenuControllerTest.class
 com/company/officialwebsite/modules/casecenter/service/impl/CaseServiceImplTest.class
 com/company/officialwebsite/common/config/SchedulingConfigurationTest.class
@@ -32,4 +37,5 @@ com/company/officialwebsite/modules/casecenter/controller/CaseControllerTest.cla
 com/company/officialwebsite/modules/product/controller/ProductControllerTest.class
 com/company/officialwebsite/infrastructure/cache/PortalCacheSupportTest.class
 com/company/officialwebsite/modules/site/controller/SiteConfigControllerTest.class
+com/company/officialwebsite/modules/site/controller/TimelineEventControllerTest.class
 com/company/officialwebsite/common/utils/StringFieldUtilsTest.class

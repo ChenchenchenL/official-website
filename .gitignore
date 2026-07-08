@@ -1,2 +1,4 @@
 /target/
 /src/main/resources/application-local.yml
+*.class
+*.log

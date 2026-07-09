@@ -10,6 +10,8 @@ import com.company.officialwebsite.common.entity.BaseEntity;
 public class PromiseTagEntity extends BaseEntity {
 
     private String tagText;
+    private String description;
+    private Boolean visible;
     private Integer sortOrder;
 
     public String getTagText() {
@@ -18,6 +20,22 @@ public class PromiseTagEntity extends BaseEntity {
 
     public void setTagText(String tagText) {
         this.tagText = tagText;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Boolean getVisible() {
+        return visible;
+    }
+
+    public void setVisible(Boolean visible) {
+        this.visible = visible;
     }
 
     public Integer getSortOrder() {

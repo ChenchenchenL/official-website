@@ -4,6 +4,7 @@ import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.modules.product.dto.ProductCreateDTO;
 import com.company.officialwebsite.modules.product.dto.ProductSortItemDTO;
 import com.company.officialwebsite.modules.product.dto.ProductUpdateDTO;
+import com.company.officialwebsite.modules.product.vo.PortalProductDetailVO;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import com.company.officialwebsite.modules.product.vo.ProductVO;
 import java.util.List;
@@ -39,7 +40,17 @@ public interface ProductService {
     void batchSort(List<ProductSortItemDTO> sortItems);
 
     /**
+     * 更新产品内容状态。
+     */
+    ProductVO updateProductStatus(Long id, String status, Integer version);
+
+    /**
      * 获取前台展示的已上架产品矩阵列表（Portal端，带缓存）。
      */
     List<PortalProductVO> getPortalProducts();
+
+    /**
+     * 鑾峰彇鍓嶅彴浜у搧璇︽儏銆?
+     */
+    PortalProductDetailVO getPortalProductDetail(Long id);
 }

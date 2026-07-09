@@ -6,6 +6,7 @@ import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseDeleteDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseUpdateDTO;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
+import com.company.officialwebsite.modules.casecenter.vo.PortalCaseDetailVO;
 import com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO;
 import java.util.List;
 
@@ -24,5 +25,9 @@ public interface CaseService {
 
     List<AdminCaseVO> batchSortCases(CaseBatchSortDTO sortDTO);
 
+    AdminCaseVO updateCaseStatus(Long id, String status, Integer version);
+
     List<PortalCaseVO> getPortalCases();
+
+    PortalCaseDetailVO getPortalCaseDetail(Long id);
 }

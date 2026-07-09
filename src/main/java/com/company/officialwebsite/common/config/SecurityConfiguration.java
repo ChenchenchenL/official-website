@@ -20,6 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 /**
  * SecurityConfiguration：配置后台登录、会话鉴权、CSRF 防护、跨域策略和未授权响应格式。
@@ -52,6 +53,9 @@ public class SecurityConfiguration {
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
             CookieCsrfTokenRepository csrfTokenRepository) throws Exception {
+        CsrfTokenRequestAttributeHandler csrfTokenRequestHandler = new CsrfTokenRequestAttributeHandler();
+        csrfTokenRequestHandler.setCsrfRequestAttributeName(null);
+
         httpSecurity
                 .securityContext(securityContext -> securityContext.requireExplicitSave(false))
                 .sessionManagement(sessionManagement -> sessionManagement
@@ -59,7 +63,10 @@ public class SecurityConfiguration {
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
-                        .ignoringRequestMatchers(SecurityConstants.PORTAL_API_PATTERN))
+                        .csrfTokenRequestHandler(csrfTokenRequestHandler)
+                        .ignoringRequestMatchers(
+                                SecurityConstants.PORTAL_API_PATTERN,
+                                SecurityConstants.LOGIN_ENDPOINT))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(SecurityConstants.CSRF_ENDPOINT, SecurityConstants.LOGIN_ENDPOINT, "/error")
                         .permitAll()

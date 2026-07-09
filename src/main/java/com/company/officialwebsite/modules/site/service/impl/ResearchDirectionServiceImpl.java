@@ -8,6 +8,7 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.converter.ResearchDirectionConverter;
@@ -54,6 +55,7 @@ public class ResearchDirectionServiceImpl implements ResearchDirectionService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ContentReferenceGuard contentReferenceGuard;
     private final int sortGap;
 
     public ResearchDirectionServiceImpl(
@@ -62,12 +64,14 @@ public class ResearchDirectionServiceImpl implements ResearchDirectionService {
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ContentReferenceGuard contentReferenceGuard) {
         this.researchDirectionMapper = researchDirectionMapper;
         this.researchDirectionConverter = researchDirectionConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.contentReferenceGuard = contentReferenceGuard;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -122,6 +126,7 @@ public class ResearchDirectionServiceImpl implements ResearchDirectionService {
     public List<AdminResearchDirectionVO> deleteDirection(Long id, Integer version) {
         ResearchDirectionEntity entity = requireActiveDirection(id);
         ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
         Map<String, Object> before = toSnapshot(entity);
 
         int deleted = researchDirectionMapper.delete(

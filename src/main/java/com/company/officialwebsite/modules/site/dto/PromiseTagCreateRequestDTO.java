@@ -12,11 +12,32 @@ public class PromiseTagCreateRequestDTO {
     @Size(max = 32, message = "标签文本长度不能超过32个字符")
     private String tagText;
 
+    @Size(max = 255, message = "标签描述长度不能超过255个字符")
+    private String description;
+
+    private Boolean visible;
+
     public String getTagText() {
         return tagText;
     }
 
     public void setTagText(String tagText) {
         this.tagText = tagText;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Boolean getVisible() {
+        return visible;
+    }
+
+    public void setVisible(Boolean visible) {
+        this.visible = visible;
     }
 }

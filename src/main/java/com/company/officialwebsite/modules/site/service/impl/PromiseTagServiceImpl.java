@@ -90,6 +90,8 @@ public class PromiseTagServiceImpl implements PromiseTagService {
     public void createPromiseTag(PromiseTagCreateRequestDTO requestDTO) {
         PromiseTagEntity entity = new PromiseTagEntity();
         entity.setTagText(normalizeTagText(requestDTO.getTagText()));
+        entity.setDescription(normalizeDescription(requestDTO.getDescription()));
+        entity.setVisible(requestDTO.getVisible() == null || requestDTO.getVisible());
         entity.setSortOrder(nextSortOrder());
         try {
             promiseTagMapper.insert(entity);
@@ -109,6 +111,8 @@ public class PromiseTagServiceImpl implements PromiseTagService {
         ConcurrencyHelper.assertVersion(entity.getVersion(), requestDTO.getVersion());
         Map<String, Object> before = toSnapshot(entity);
         entity.setTagText(normalizeTagText(requestDTO.getTagText()));
+        entity.setDescription(normalizeDescription(requestDTO.getDescription()));
+        entity.setVisible(requestDTO.getVisible() == null ? Boolean.TRUE.equals(entity.getVisible()) : requestDTO.getVisible());
         try {
             ConcurrencyHelper.tryUpdate(promiseTagMapper, entity);
         } catch (DuplicateKeyException ex) {
@@ -210,6 +214,8 @@ public class PromiseTagServiceImpl implements PromiseTagService {
         AdminPromiseTagVO vo = new AdminPromiseTagVO();
         vo.setId(entity.getId());
         vo.setTagText(StringFieldUtils.defaultString(entity.getTagText()));
+        vo.setDescription(StringFieldUtils.defaultString(entity.getDescription()));
+        vo.setVisible(Boolean.TRUE.equals(entity.getVisible()));
         vo.setSortOrder(entity.getSortOrder());
         vo.setVersion(entity.getVersion());
         vo.setUpdatedAt(entity.getUpdatedAt());
@@ -220,6 +226,8 @@ public class PromiseTagServiceImpl implements PromiseTagService {
         Map<String, Object> snapshot = new HashMap<>();
         snapshot.put("id", entity.getId());
         snapshot.put("tagText", entity.getTagText());
+        snapshot.put("description", entity.getDescription());
+        snapshot.put("visible", entity.getVisible());
         snapshot.put("sortOrder", entity.getSortOrder());
         snapshot.put("version", entity.getVersion());
         return snapshot;
@@ -232,6 +240,10 @@ public class PromiseTagServiceImpl implements PromiseTagService {
             throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, MSG_TAG_TEXT_REQUIRED);
         }
         return normalized;
+    }
+
+    private String normalizeDescription(String description) {
+        return StringFieldUtils.trimToNull(description);
     }
 
     private int nextSortOrder() {

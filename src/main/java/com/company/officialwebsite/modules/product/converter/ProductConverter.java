@@ -5,6 +5,7 @@ import com.company.officialwebsite.common.utils.StringFieldUtils;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.modules.product.vo.PortalProductDetailVO;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import com.company.officialwebsite.modules.product.vo.ProductVO;
 import org.slf4j.Logger;
@@ -38,6 +39,7 @@ public class ProductConverter {
         vo.setSubTitle(StringFieldUtils.defaultString(entity.getSubTitle()));
         vo.setAbstractText(StringFieldUtils.defaultString(entity.getAbstractText()));
         vo.setStatusTag(StringFieldUtils.defaultString(entity.getStatusTag()));
+        vo.setStatus(StringFieldUtils.defaultString(entity.getStatus()));
         vo.setDetailLink(StringFieldUtils.defaultString(entity.getDetailLink()));
         vo.setVisible(entity.getVisible());
         vo.setSortOrder(entity.getSortOrder());
@@ -69,7 +71,31 @@ public class ProductConverter {
         vo.setSubTitle(StringFieldUtils.defaultString(entity.getSubTitle()));
         vo.setAbstractText(StringFieldUtils.defaultString(entity.getAbstractText()));
         vo.setStatusTag(StringFieldUtils.defaultString(entity.getStatusTag()));
-        vo.setDetailLink(StringFieldUtils.defaultString(entity.getDetailLink()));
+        vo.setStatus(StringFieldUtils.defaultString(entity.getStatus()));
+        vo.setDetailLink(resolveDetailLink(entity));
+        return vo;
+    }
+
+    public PortalProductDetailVO toPortalDetailVO(ProductEntity entity) {
+        if (entity == null) {
+            return null;
+        }
+        PortalProductDetailVO vo = new PortalProductDetailVO();
+        String title = StringFieldUtils.defaultString(entity.getName());
+        String description = StringFieldUtils.defaultString(entity.getAbstractText());
+        MediaAssetEntity asset = resolveLogoAsset(entity.getLogoId(), entity.getId());
+
+        vo.setId(entity.getId());
+        vo.setTitle(title);
+        vo.setDescription(description);
+        vo.setContent(buildProductContent(entity));
+        vo.setCoverMediaId(entity.getLogoId());
+        vo.setCoverUrl(asset != null ? StringFieldUtils.defaultString(asset.getPublicUrl()) : "");
+        vo.setSeoTitle(title);
+        vo.setSeoDescription(description);
+        vo.setVisible(Integer.valueOf(1).equals(entity.getVisible()));
+        vo.setStatus(StringFieldUtils.defaultString(entity.getStatus()));
+        vo.setUpdatedAt(entity.getUpdatedAt());
         return vo;
     }
 
@@ -83,5 +109,36 @@ public class ProductConverter {
             log.warn("product logo unavailable productId={} logoId={}", productId, logoId);
             return null;
         }
+    }
+
+    private String resolveDetailLink(ProductEntity entity) {
+        String detailLink = StringFieldUtils.defaultString(entity.getDetailLink()).trim();
+        if (!detailLink.isEmpty()) {
+            return detailLink;
+        }
+        return entity.getId() == null ? "" : "/product/" + entity.getId();
+    }
+
+    private String buildProductContent(ProductEntity entity) {
+        StringBuilder builder = new StringBuilder();
+        appendParagraph(builder, entity.getSubTitle());
+        appendParagraph(builder, entity.getAbstractText());
+        return builder.toString();
+    }
+
+    private void appendParagraph(StringBuilder builder, String value) {
+        String text = StringFieldUtils.defaultString(value).trim();
+        if (!text.isEmpty()) {
+            builder.append("<p>").append(escapeHtml(text)).append("</p>");
+        }
+    }
+
+    private String escapeHtml(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 }

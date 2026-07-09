@@ -7,10 +7,19 @@ import java.util.List;
  */
 public class PortalIndustrySolutionVO {
 
+    private Long id;
     private String name;
     private String iconUrl;
     private String description;
     private List<String> customerTags;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getName() {
         return name;

@@ -15,6 +15,7 @@ public class AdminCaseVO {
     private String summary;
     private List<String> keywords;
     private Boolean visible;
+    private String status;
     private Integer sortOrder;
     private Integer version;
     private LocalDateTime updatedAt;
@@ -73,6 +74,14 @@ public class AdminCaseVO {
 
     public void setVisible(Boolean visible) {
         this.visible = visible;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public Integer getSortOrder() {

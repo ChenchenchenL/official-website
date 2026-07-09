@@ -12,8 +12,6 @@ services:
       MYSQL_USER: ${OW_DB_USERNAME:-official_website}
       MYSQL_PASSWORD: ${OW_DB_PASSWORD:-official_website_local}
       MYSQL_ROOT_PASSWORD: ${OW_DB_ROOT_PASSWORD:-official_website_root_local}
-    ports:
-      - "${OW_MYSQL_HOST_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -27,8 +25,6 @@ services:
     image: redis:7.4-alpine
     container_name: official-website-redis
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${OW_REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:

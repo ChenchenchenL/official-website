@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS cms_value_card (
     CONSTRAINT uk_cms_value_card_title_del UNIQUE (title, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cms_value_card_visible_del_sort
+CREATE INDEX idx_cms_value_card_visible_del_sort
     ON cms_value_card (visible, deleted_marker, sort_order, id);
 
 INSERT INTO cms_value_card (

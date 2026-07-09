@@ -22,13 +22,13 @@ CREATE TABLE IF NOT EXISTS cms_lead_record (
   COMMENT='线索记录';
 
 -- 后台列表主路径：按提交时间倒序分页查询。
-CREATE INDEX IF NOT EXISTS idx_cms_lead_record_del_submit_at
+CREATE INDEX idx_cms_lead_record_del_submit_at
     ON cms_lead_record (deleted_marker, created_at, id);
 
 -- 状态筛选是看板操作的高频条件。
-CREATE INDEX IF NOT EXISTS idx_cms_lead_record_del_status_submit_at
+CREATE INDEX idx_cms_lead_record_del_status_submit_at
     ON cms_lead_record (deleted_marker, status, created_at, id);
 
 -- IP 索引用于排障和后续反刷分析。
-CREATE INDEX IF NOT EXISTS idx_cms_lead_record_submit_ip_created_at
+CREATE INDEX idx_cms_lead_record_submit_ip_created_at
     ON cms_lead_record (submit_ip, created_at);

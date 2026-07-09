@@ -52,6 +52,7 @@ public class IndustrySolutionConverter {
             return null;
         }
         PortalIndustrySolutionVO vo = new PortalIndustrySolutionVO();
+        vo.setId(entity.getId());
         vo.setName(StringFieldUtils.defaultString(entity.getName()));
         vo.setDescription(StringFieldUtils.defaultString(entity.getDescription()));
         vo.setCustomerTags(safeTags(entity.getCustomerTags()));

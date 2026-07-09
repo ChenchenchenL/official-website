@@ -9,14 +9,26 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
+import com.company.officialwebsite.modules.casecenter.converter.CaseConverter;
+import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
+import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
+import com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO;
+import com.company.officialwebsite.modules.content.entity.ContentRelationEntity;
+import com.company.officialwebsite.modules.content.mapper.ContentRelationMapper;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
+import com.company.officialwebsite.modules.product.converter.IndustrySolutionConverter;
 import com.company.officialwebsite.modules.product.converter.ProductConverter;
 import com.company.officialwebsite.modules.product.dto.ProductCreateDTO;
 import com.company.officialwebsite.modules.product.dto.ProductSortItemDTO;
 import com.company.officialwebsite.modules.product.dto.ProductUpdateDTO;
+import com.company.officialwebsite.modules.product.entity.IndustrySolutionEntity;
 import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper;
 import com.company.officialwebsite.modules.product.mapper.ProductMapper;
 import com.company.officialwebsite.modules.product.service.ProductService;
+import com.company.officialwebsite.modules.product.vo.PortalIndustrySolutionVO;
+import com.company.officialwebsite.modules.product.vo.PortalProductDetailVO;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import com.company.officialwebsite.modules.product.vo.ProductVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
@@ -47,28 +59,55 @@ public class ProductServiceImpl implements ProductService {
     private static final String ACTION_UPDATE = "UPDATE_PRODUCT";
     private static final String ACTION_DELETE = "DELETE_PRODUCT";
     private static final String ACTION_REORDER = "REORDER_PRODUCT";
+    private static final String ACTION_STATUS = "UPDATE_PRODUCT_STATUS";
     private static final String MEDIA_BIZ_FIELD = "logo";
     private static final String CACHE_KEY_SEGMENT = "products";
+    private static final String STATUS_DRAFT = "DRAFT";
+    private static final String STATUS_PUBLISHED = "PUBLISHED";
+    private static final String STATUS_OFFLINE = "OFFLINE";
+    private static final String TYPE_CASE = "CASE";
+    private static final String TYPE_INDUSTRY_SOLUTION = "INDUSTRY_SOLUTION";
+    private static final String REL_PRODUCT_CASE = "PRODUCT_CASE";
+    private static final String REL_CASE_INDUSTRY = "CASE_INDUSTRY";
+    private static final int RECOMMENDATION_LIMIT = 3;
 
     private final ProductMapper productMapper;
     private final ProductConverter productConverter;
+    private final CaseMapper caseMapper;
+    private final CaseConverter caseConverter;
+    private final IndustrySolutionMapper industrySolutionMapper;
+    private final IndustrySolutionConverter industrySolutionConverter;
+    private final ContentRelationMapper contentRelationMapper;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ContentReferenceGuard contentReferenceGuard;
     private final int sortGap;
 
     public ProductServiceImpl(
             ProductMapper productMapper,
             ProductConverter productConverter,
+            CaseMapper caseMapper,
+            CaseConverter caseConverter,
+            IndustrySolutionMapper industrySolutionMapper,
+            IndustrySolutionConverter industrySolutionConverter,
+            ContentRelationMapper contentRelationMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ContentReferenceGuard contentReferenceGuard) {
         this.productMapper = productMapper;
         this.productConverter = productConverter;
+        this.caseMapper = caseMapper;
+        this.caseConverter = caseConverter;
+        this.industrySolutionMapper = industrySolutionMapper;
+        this.industrySolutionConverter = industrySolutionConverter;
+        this.contentRelationMapper = contentRelationMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.contentReferenceGuard = contentReferenceGuard;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -97,6 +136,7 @@ public class ProductServiceImpl implements ProductService {
         entity.setSubTitle(createDTO.getSubTitle() != null ? createDTO.getSubTitle().trim() : null);
         entity.setAbstractText(createDTO.getAbstractText().trim());
         entity.setStatusTag(createDTO.getStatusTag() != null ? createDTO.getStatusTag().trim() : null);
+        entity.setStatus(normalizeContentStatus(createDTO.getStatus(), STATUS_DRAFT));
         entity.setDetailLink(createDTO.getDetailLink() != null ? createDTO.getDetailLink().trim() : null);
         entity.setVisible(createDTO.getVisible() != null ? createDTO.getVisible() : 1);
 
@@ -148,6 +188,7 @@ public class ProductServiceImpl implements ProductService {
         entity.setSubTitle(updateDTO.getSubTitle() != null ? updateDTO.getSubTitle().trim() : null);
         entity.setAbstractText(updateDTO.getAbstractText().trim());
         entity.setStatusTag(updateDTO.getStatusTag() != null ? updateDTO.getStatusTag().trim() : null);
+        entity.setStatus(normalizeContentStatus(updateDTO.getStatus(), defaultExistingStatus(entity.getStatus())));
         entity.setDetailLink(updateDTO.getDetailLink() != null ? updateDTO.getDetailLink().trim() : null);
         entity.setVisible(updateDTO.getVisible() != null ? updateDTO.getVisible() : 1);
         if (updateDTO.getSortOrder() != null) {
@@ -183,6 +224,7 @@ public class ProductServiceImpl implements ProductService {
     public void deleteProduct(Long id, Integer version) {
         ProductEntity entity = requireActiveProduct(id);
         ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
         Map<String, Object> before = toSnapshot(entity);
 
         int deleted = productMapper.delete(
@@ -262,6 +304,20 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
+    public ProductVO updateProductStatus(Long id, String status, Integer version) {
+        ProductEntity entity = requireActiveProduct(id);
+        ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+        Map<String, Object> before = toSnapshot(entity);
+        entity.setStatus(normalizeContentStatus(status, null));
+        ConcurrencyHelper.tryUpdate(productMapper, entity);
+        log.info("update product status success productId={} status={}", entity.getId(), entity.getStatus());
+        recordAudit(ACTION_STATUS, entity.getId(), before, toSnapshot(entity));
+        invalidatePortalCache();
+        return productConverter.toAdminVO(entity);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<PortalProductVO> getPortalProducts() {
         String cacheKey = portalCacheSupport.buildKey(CACHE_KEY_SEGMENT);
@@ -274,12 +330,120 @@ public class ProductServiceImpl implements ProductService {
                 new LambdaQueryWrapper<ProductEntity>()
                         .eq(ProductEntity::getDeletedMarker, 0L)
                         .eq(ProductEntity::getVisible, 1)
+                        .eq(ProductEntity::getStatus, STATUS_PUBLISHED)
                         .orderByAsc(ProductEntity::getSortOrder)
                         .orderByAsc(ProductEntity::getId));
         List<PortalProductVO> result = list.stream().map(productConverter::toPortalVO).toList();
 
         portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_KEY_SEGMENT);
         return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PortalProductDetailVO getPortalProductDetail(Long id) {
+        ProductEntity entity = productMapper.selectOne(
+                new LambdaQueryWrapper<ProductEntity>()
+                        .eq(ProductEntity::getId, id)
+                        .eq(ProductEntity::getDeletedMarker, 0L)
+                        .eq(ProductEntity::getVisible, 1)
+                        .eq(ProductEntity::getStatus, STATUS_PUBLISHED));
+        if (entity == null) {
+            log.warn("portal product detail not found productId={}", id);
+            throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND);
+        }
+        PortalProductDetailVO detail = productConverter.toPortalDetailVO(entity);
+        detail.setRelatedCases(listRelatedCases(entity.getId()));
+        detail.setRelatedIndustrySolutions(listRelatedIndustrySolutions(entity.getId()));
+        return detail;
+    }
+
+    private List<PortalCaseVO> listRelatedCases(Long productId) {
+        List<Long> caseIds = contentRelationMapper.selectList(
+                        new LambdaQueryWrapper<ContentRelationEntity>()
+                                .eq(ContentRelationEntity::getDeletedMarker, 0L)
+                                .eq(ContentRelationEntity::getSourceType, TARGET_TYPE)
+                                .eq(ContentRelationEntity::getSourceId, productId)
+                                .eq(ContentRelationEntity::getTargetType, TYPE_CASE)
+                                .eq(ContentRelationEntity::getRelationType, REL_PRODUCT_CASE)
+                                .orderByAsc(ContentRelationEntity::getId))
+                .stream()
+                .map(ContentRelationEntity::getTargetId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        return listPublishedCasesByIds(caseIds, RECOMMENDATION_LIMIT).stream()
+                .map(caseConverter::toPortalVO)
+                .toList();
+    }
+
+    private List<PortalIndustrySolutionVO> listRelatedIndustrySolutions(Long productId) {
+        List<Long> caseIds = contentRelationMapper.selectList(
+                        new LambdaQueryWrapper<ContentRelationEntity>()
+                                .eq(ContentRelationEntity::getDeletedMarker, 0L)
+                                .eq(ContentRelationEntity::getSourceType, TARGET_TYPE)
+                                .eq(ContentRelationEntity::getSourceId, productId)
+                                .eq(ContentRelationEntity::getTargetType, TYPE_CASE)
+                                .eq(ContentRelationEntity::getRelationType, REL_PRODUCT_CASE)
+                                .orderByAsc(ContentRelationEntity::getId))
+                .stream()
+                .map(ContentRelationEntity::getTargetId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (caseIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> solutionIds = contentRelationMapper.selectList(
+                        new LambdaQueryWrapper<ContentRelationEntity>()
+                                .eq(ContentRelationEntity::getDeletedMarker, 0L)
+                                .eq(ContentRelationEntity::getSourceType, TYPE_CASE)
+                                .in(ContentRelationEntity::getSourceId, caseIds)
+                                .eq(ContentRelationEntity::getTargetType, TYPE_INDUSTRY_SOLUTION)
+                                .eq(ContentRelationEntity::getRelationType, REL_CASE_INDUSTRY)
+                                .orderByAsc(ContentRelationEntity::getId))
+                .stream()
+                .map(ContentRelationEntity::getTargetId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (solutionIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, IndustrySolutionEntity> solutionMap = new HashMap<>();
+        industrySolutionMapper.selectList(
+                        new LambdaQueryWrapper<IndustrySolutionEntity>()
+                                .in(IndustrySolutionEntity::getId, solutionIds)
+                                .eq(IndustrySolutionEntity::getDeletedMarker, 0L)
+                                .eq(IndustrySolutionEntity::getVisible, true))
+                .forEach(solution -> solutionMap.put(solution.getId(), solution));
+        return solutionIds.stream()
+                .map(solutionMap::get)
+                .filter(Objects::nonNull)
+                .limit(RECOMMENDATION_LIMIT)
+                .map(industrySolutionConverter::toPortalVO)
+                .toList();
+    }
+
+    private List<CaseEntity> listPublishedCasesByIds(List<Long> caseIds, int limit) {
+        if (caseIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, CaseEntity> caseMap = new HashMap<>();
+        caseMapper.selectList(
+                        new LambdaQueryWrapper<CaseEntity>()
+                                .in(CaseEntity::getId, caseIds)
+                                .eq(CaseEntity::getDeletedMarker, 0L)
+                                .eq(CaseEntity::getVisible, true)
+                                .eq(CaseEntity::getStatus, STATUS_PUBLISHED))
+                .forEach(caseEntity -> caseMap.put(caseEntity.getId(), caseEntity));
+        return caseIds.stream()
+                .map(caseMap::get)
+                .filter(Objects::nonNull)
+                .limit(limit)
+                .toList();
     }
 
     private ProductEntity requireActiveProduct(Long id) {
@@ -339,6 +503,7 @@ public class ProductServiceImpl implements ProductService {
         snapshot.put("subTitle", entity.getSubTitle());
         snapshot.put("abstractText", entity.getAbstractText());
         snapshot.put("statusTag", entity.getStatusTag());
+        snapshot.put("status", entity.getStatus());
         snapshot.put("detailLink", entity.getDetailLink());
         snapshot.put("visible", entity.getVisible());
         snapshot.put("sortOrder", entity.getSortOrder());
@@ -348,6 +513,21 @@ public class ProductServiceImpl implements ProductService {
 
     private void invalidatePortalCache() {
         portalCacheSupport.invalidatePortalKey(CACHE_KEY_SEGMENT);
+    }
+
+    private String normalizeContentStatus(String status, String defaultStatus) {
+        String normalized = status == null || status.isBlank() ? defaultStatus : status.trim().toUpperCase();
+        if (normalized == null) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "内容状态不能为空");
+        }
+        if (!Set.of(STATUS_DRAFT, STATUS_PUBLISHED, STATUS_OFFLINE).contains(normalized)) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "内容状态只能是 DRAFT、PUBLISHED 或 OFFLINE");
+        }
+        return normalized;
+    }
+
+    private String defaultExistingStatus(String status) {
+        return status == null || status.isBlank() ? STATUS_DRAFT : status.trim().toUpperCase();
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

@@ -16,6 +16,9 @@ public class MediaAssetEntity extends BaseEntity {
     private String storagePath;
     private String publicUrl;
     private Long fileSize;
+    private String usageTag;
+    private String altText;
+    private String remark;
 
     public String getMediaType() {
         return mediaType;
@@ -71,5 +74,29 @@ public class MediaAssetEntity extends BaseEntity {
 
     public void setFileSize(Long fileSize) {
         this.fileSize = fileSize;
+    }
+
+    public String getUsageTag() {
+        return usageTag;
+    }
+
+    public void setUsageTag(String usageTag) {
+        this.usageTag = usageTag;
+    }
+
+    public String getAltText() {
+        return altText;
+    }
+
+    public void setAltText(String altText) {
+        this.altText = altText;
+    }
+
+    public String getRemark() {
+        return remark;
+    }
+
+    public void setRemark(String remark) {
+        this.remark = remark;
     }
 }

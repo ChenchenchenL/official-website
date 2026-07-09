@@ -27,6 +27,9 @@ public class CaseCreateDTO {
     @NotNull(message = "visible 不能为空")
     private Boolean visible;
 
+    @Size(max = 32, message = "内容状态最长 32 字符")
+    private String status;
+
     public String getTitle() {
         return title;
     }
@@ -65,5 +68,13 @@ public class CaseCreateDTO {
 
     public void setVisible(Boolean visible) {
         this.visible = visible;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

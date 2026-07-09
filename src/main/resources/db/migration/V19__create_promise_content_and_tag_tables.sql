@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS cms_promise_tag (
     CONSTRAINT uk_cms_promise_tag_text_del UNIQUE (tag_text, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cms_promise_tag_del_sort
+CREATE INDEX idx_cms_promise_tag_del_sort
     ON cms_promise_tag (deleted_marker, sort_order, id);
 
 -- 单例主体文案默认记录

@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS cms_navigation_menu (
     CONSTRAINT uk_cms_navigation_menu_parent_name_deleted_marker UNIQUE (parent_id, menu_name, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cms_navigation_menu_parent_deleted_sort
+CREATE INDEX idx_cms_navigation_menu_parent_deleted_sort
     ON cms_navigation_menu (parent_id, deleted_marker, sort_order, id);
 
-CREATE INDEX IF NOT EXISTS idx_cms_navigation_menu_visible_deleted_sort
+CREATE INDEX idx_cms_navigation_menu_visible_deleted_sort
     ON cms_navigation_menu (visible, deleted_marker, sort_order, id);

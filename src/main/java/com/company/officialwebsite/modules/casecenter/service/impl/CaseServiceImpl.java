@@ -20,8 +20,16 @@ import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
 import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.casecenter.service.CaseService;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
+import com.company.officialwebsite.modules.casecenter.vo.PortalCaseDetailVO;
 import com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO;
+import com.company.officialwebsite.modules.content.entity.ContentRelationEntity;
+import com.company.officialwebsite.modules.content.mapper.ContentRelationMapper;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
+import com.company.officialwebsite.modules.product.converter.ProductConverter;
+import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.modules.product.mapper.ProductMapper;
+import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -53,7 +61,14 @@ public class CaseServiceImpl implements CaseService {
     private static final String ACTION_UPDATE = "UPDATE_CASE";
     private static final String ACTION_DELETE = "DELETE_CASE";
     private static final String ACTION_REORDER = "REORDER_CASE";
+    private static final String ACTION_STATUS = "UPDATE_CASE_STATUS";
     private static final String MEDIA_BIZ_FIELD = "logo";
+    private static final String STATUS_DRAFT = "DRAFT";
+    private static final String STATUS_PUBLISHED = "PUBLISHED";
+    private static final String STATUS_OFFLINE = "OFFLINE";
+    private static final String TYPE_PRODUCT = "PRODUCT";
+    private static final String REL_PRODUCT_CASE = "PRODUCT_CASE";
+    private static final int RECOMMENDATION_LIMIT = 3;
     private static final String MSG_SORT_LIST_EMPTY = "排序列表不能为空";
     private static final String MSG_SORT_LIST_DUPLICATE = "排序列表不能包含重复案例";
     private static final String MSG_NO_SORTABLE_CASE = "暂无可排序的标杆案例";
@@ -70,26 +85,38 @@ public class CaseServiceImpl implements CaseService {
 
     private final CaseMapper caseMapper;
     private final CaseConverter caseConverter;
+    private final ProductMapper productMapper;
+    private final ProductConverter productConverter;
+    private final ContentRelationMapper contentRelationMapper;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
     private final ApplicationEventPublisher eventPublisher;
+    private final ContentReferenceGuard contentReferenceGuard;
     private final int sortGap;
 
     public CaseServiceImpl(
             CaseMapper caseMapper,
             CaseConverter caseConverter,
+            ProductMapper productMapper,
+            ProductConverter productConverter,
+            ContentRelationMapper contentRelationMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
             PortalCacheSupport portalCacheSupport,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ContentReferenceGuard contentReferenceGuard) {
         this.caseMapper = caseMapper;
         this.caseConverter = caseConverter;
+        this.productMapper = productMapper;
+        this.productConverter = productConverter;
+        this.contentRelationMapper = contentRelationMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
         this.eventPublisher = eventPublisher;
+        this.contentReferenceGuard = contentReferenceGuard;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -117,6 +144,7 @@ public class CaseServiceImpl implements CaseService {
         entity.setSummary(normalizeRequiredText(createDTO.getSummary(), 512, "成效摘要"));
         entity.setKeywords(normalizeKeywords(createDTO.getKeywords()));
         entity.setVisible(createDTO.getVisible());
+        entity.setStatus(normalizeContentStatus(createDTO.getStatus(), STATUS_DRAFT));
         entity.setSortOrder(nextSortOrder());
 
         try {
@@ -146,6 +174,7 @@ public class CaseServiceImpl implements CaseService {
         entity.setSummary(normalizeRequiredText(updateDTO.getSummary(), 512, "成效摘要"));
         entity.setKeywords(normalizeKeywords(updateDTO.getKeywords()));
         entity.setVisible(updateDTO.getVisible());
+        entity.setStatus(normalizeContentStatus(updateDTO.getStatus(), defaultExistingStatus(entity.getStatus())));
 
         try {
             ConcurrencyHelper.tryUpdate(caseMapper, entity);
@@ -170,6 +199,7 @@ public class CaseServiceImpl implements CaseService {
     public List<AdminCaseVO> deleteCase(Long id, CaseDeleteDTO deleteDTO) {
         CaseEntity entity = requireActiveCase(id);
         ConcurrencyHelper.assertVersion(entity.getVersion(), deleteDTO.getVersion());
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
         Map<String, Object> before = toSnapshot(entity);
 
         int deleted = caseMapper.delete(
@@ -247,6 +277,20 @@ public class CaseServiceImpl implements CaseService {
     }
 
     @Override
+    @Transactional
+    public AdminCaseVO updateCaseStatus(Long id, String status, Integer version) {
+        CaseEntity entity = requireActiveCase(id);
+        ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+        Map<String, Object> before = toSnapshot(entity);
+        entity.setStatus(normalizeContentStatus(status, null));
+        ConcurrencyHelper.tryUpdate(caseMapper, entity);
+        log.info("update case status success caseId={} status={}", entity.getId(), entity.getStatus());
+        recordAudit(ACTION_STATUS, entity.getId(), before, toSnapshot(entity));
+        invalidatePortalCache();
+        return caseConverter.toAdminVO(entity);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<PortalCaseVO> getPortalCases() {
         String cacheKey = portalCacheSupport.buildKey(CACHE_SEGMENT);
@@ -259,6 +303,7 @@ public class CaseServiceImpl implements CaseService {
                 new LambdaQueryWrapper<CaseEntity>()
                         .eq(CaseEntity::getDeletedMarker, 0L)
                         .eq(CaseEntity::getVisible, true)
+                        .eq(CaseEntity::getStatus, STATUS_PUBLISHED)
                         .orderByAsc(CaseEntity::getSortOrder)
                         .orderByAsc(CaseEntity::getId))
                 .stream()
@@ -266,6 +311,111 @@ public class CaseServiceImpl implements CaseService {
                 .toList();
         portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PortalCaseDetailVO getPortalCaseDetail(Long id) {
+        CaseEntity entity = caseMapper.selectOne(
+                new LambdaQueryWrapper<CaseEntity>()
+                        .eq(CaseEntity::getId, id)
+                        .eq(CaseEntity::getDeletedMarker, 0L)
+                        .eq(CaseEntity::getVisible, true)
+                        .eq(CaseEntity::getStatus, STATUS_PUBLISHED));
+        if (entity == null) {
+            log.warn("portal case detail not found caseId={}", id);
+            throw new BusinessException(ErrorCode.CASE_NOT_FOUND);
+        }
+        PortalCaseDetailVO detail = caseConverter.toPortalDetailVO(entity);
+        detail.setRelatedProducts(listRelatedProducts(entity.getId()));
+        detail.setRecommendedCases(listRecommendedCases(entity.getId()));
+        return detail;
+    }
+
+    private List<PortalProductVO> listRelatedProducts(Long caseId) {
+        List<Long> productIds = listRelatedProductIds(caseId);
+        return listPublishedProductsByIds(productIds, RECOMMENDATION_LIMIT).stream()
+                .map(productConverter::toPortalVO)
+                .toList();
+    }
+
+    private List<PortalCaseVO> listRecommendedCases(Long caseId) {
+        List<Long> productIds = listRelatedProductIds(caseId);
+        if (productIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> caseIds = contentRelationMapper.selectList(
+                        new LambdaQueryWrapper<ContentRelationEntity>()
+                                .eq(ContentRelationEntity::getDeletedMarker, 0L)
+                                .eq(ContentRelationEntity::getSourceType, TYPE_PRODUCT)
+                                .in(ContentRelationEntity::getSourceId, productIds)
+                                .eq(ContentRelationEntity::getTargetType, TARGET_TYPE)
+                                .eq(ContentRelationEntity::getRelationType, REL_PRODUCT_CASE)
+                                .ne(ContentRelationEntity::getTargetId, caseId)
+                                .orderByAsc(ContentRelationEntity::getId))
+                .stream()
+                .map(ContentRelationEntity::getTargetId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        return listPublishedCasesByIds(caseIds, RECOMMENDATION_LIMIT).stream()
+                .map(caseConverter::toPortalVO)
+                .toList();
+    }
+
+    private List<Long> listRelatedProductIds(Long caseId) {
+        return contentRelationMapper.selectList(
+                        new LambdaQueryWrapper<ContentRelationEntity>()
+                                .eq(ContentRelationEntity::getDeletedMarker, 0L)
+                                .eq(ContentRelationEntity::getSourceType, TYPE_PRODUCT)
+                                .eq(ContentRelationEntity::getTargetType, TARGET_TYPE)
+                                .eq(ContentRelationEntity::getTargetId, caseId)
+                                .eq(ContentRelationEntity::getRelationType, REL_PRODUCT_CASE)
+                                .orderByAsc(ContentRelationEntity::getId))
+                .stream()
+                .map(ContentRelationEntity::getSourceId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private List<ProductEntity> listPublishedProductsByIds(List<Long> productIds, int limit) {
+        if (productIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, ProductEntity> productMap = new HashMap<>();
+        productMapper.selectList(
+                        new LambdaQueryWrapper<ProductEntity>()
+                                .in(ProductEntity::getId, productIds)
+                                .eq(ProductEntity::getDeletedMarker, 0L)
+                                .eq(ProductEntity::getVisible, 1)
+                                .eq(ProductEntity::getStatus, STATUS_PUBLISHED))
+                .forEach(product -> productMap.put(product.getId(), product));
+        return productIds.stream()
+                .map(productMap::get)
+                .filter(Objects::nonNull)
+                .limit(limit)
+                .toList();
+    }
+
+    private List<CaseEntity> listPublishedCasesByIds(List<Long> caseIds, int limit) {
+        if (caseIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, CaseEntity> caseMap = new HashMap<>();
+        caseMapper.selectList(
+                        new LambdaQueryWrapper<CaseEntity>()
+                                .in(CaseEntity::getId, caseIds)
+                                .eq(CaseEntity::getDeletedMarker, 0L)
+                                .eq(CaseEntity::getVisible, true)
+                                .eq(CaseEntity::getStatus, STATUS_PUBLISHED))
+                .forEach(caseEntity -> caseMap.put(caseEntity.getId(), caseEntity));
+        return caseIds.stream()
+                .map(caseMap::get)
+                .filter(Objects::nonNull)
+                .limit(limit)
+                .toList();
     }
 
     private CaseEntity requireActiveCase(Long id) {
@@ -371,6 +521,7 @@ public class CaseServiceImpl implements CaseService {
         snapshot.put("summary", entity.getSummary());
         snapshot.put("keywords", entity.getKeywords());
         snapshot.put("visible", entity.getVisible());
+        snapshot.put("status", entity.getStatus());
         snapshot.put("sortOrder", entity.getSortOrder());
         snapshot.put("version", entity.getVersion());
         return snapshot;
@@ -378,6 +529,21 @@ public class CaseServiceImpl implements CaseService {
 
     private void invalidatePortalCache() {
         portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
+    }
+
+    private String normalizeContentStatus(String status, String defaultStatus) {
+        String normalized = status == null || status.isBlank() ? defaultStatus : status.trim().toUpperCase();
+        if (normalized == null) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "内容状态不能为空");
+        }
+        if (!Set.of(STATUS_DRAFT, STATUS_PUBLISHED, STATUS_OFFLINE).contains(normalized)) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "内容状态只能是 DRAFT、PUBLISHED 或 OFFLINE");
+        }
+        return normalized;
+    }
+
+    private String defaultExistingStatus(String status) {
+        return status == null || status.isBlank() ? STATUS_DRAFT : status.trim().toUpperCase();
     }
 
     private void recordAudit(String actionName, Long targetId, Object before, Object after) {

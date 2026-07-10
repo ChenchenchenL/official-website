@@ -11,6 +11,7 @@ public class PortalProductVO {
     private String subTitle;
     private String abstractText;
     private String statusTag;
+    private String status;
     private String detailLink;
 
     public Long getId() {
@@ -59,6 +60,14 @@ public class PortalProductVO {
 
     public void setStatusTag(String statusTag) {
         this.statusTag = statusTag;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public String getDetailLink() {

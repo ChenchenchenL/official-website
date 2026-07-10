@@ -2,9 +2,11 @@ package com.company.officialwebsite.modules.product.controller;
 
 import com.company.officialwebsite.common.response.ApiResponse;
 import com.company.officialwebsite.modules.product.service.ProductService;
+import com.company.officialwebsite.modules.product.vo.PortalProductDetailVO;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,5 +26,10 @@ public class PortalProductController {
     @GetMapping
     public ApiResponse<List<PortalProductVO>> getPortalProducts() {
         return ApiResponse.success(productService.getPortalProducts());
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<PortalProductDetailVO> getPortalProductDetail(@PathVariable Long id) {
+        return ApiResponse.success(productService.getPortalProductDetail(id));
     }
 }

@@ -9,6 +9,7 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.converter.AiCardConverter;
 import com.company.officialwebsite.modules.site.dto.AiCardCreateRequestDTO;
@@ -55,6 +56,7 @@ public class AiCardServiceImpl implements AiCardService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ContentReferenceGuard contentReferenceGuard;
     private final int sortGap;
 
     public AiCardServiceImpl(
@@ -63,12 +65,14 @@ public class AiCardServiceImpl implements AiCardService {
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ContentReferenceGuard contentReferenceGuard) {
         this.aiCardMapper = aiCardMapper;
         this.aiCardConverter = aiCardConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.contentReferenceGuard = contentReferenceGuard;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -182,6 +186,7 @@ public class AiCardServiceImpl implements AiCardService {
     public void deleteCard(Long id, Integer version) {
         AiCardEntity entity = requireActiveCard(id);
         ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
         Map<String, Object> before = toSnapshot(entity);
 
         int deleted = aiCardMapper.delete(

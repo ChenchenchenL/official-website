@@ -64,6 +64,7 @@ public class PromisePortalApplicationService {
         }
         List<PromiseTagEntity> tags = promiseTagMapper.selectList(
                 new LambdaQueryWrapper<PromiseTagEntity>()
+                        .eq(PromiseTagEntity::getVisible, true)
                         .eq(PromiseTagEntity::getDeletedMarker, 0L)
                         .orderByAsc(PromiseTagEntity::getSortOrder)
                         .orderByAsc(PromiseTagEntity::getId));
@@ -77,6 +78,7 @@ public class PromisePortalApplicationService {
     private PortalPromiseTagVO toPortalTagVO(PromiseTagEntity entity) {
         PortalPromiseTagVO vo = new PortalPromiseTagVO();
         vo.setTagText(StringFieldUtils.defaultString(entity.getTagText()));
+        vo.setDescription(StringFieldUtils.defaultString(entity.getDescription()));
         return vo;
     }
 }

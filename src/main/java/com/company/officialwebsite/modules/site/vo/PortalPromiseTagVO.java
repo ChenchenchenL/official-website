@@ -6,6 +6,7 @@ package com.company.officialwebsite.modules.site.vo;
 public class PortalPromiseTagVO {
 
     private String tagText;
+    private String description;
 
     public String getTagText() {
         return tagText;
@@ -13,5 +14,13 @@ public class PortalPromiseTagVO {
 
     public void setTagText(String tagText) {
         this.tagText = tagText;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 }

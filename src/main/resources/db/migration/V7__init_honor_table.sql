@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS cms_honor (
     CONSTRAINT uk_cms_honor_name_deleted_marker UNIQUE (name, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cms_honor_deleted_sort
+CREATE INDEX idx_cms_honor_deleted_sort
     ON cms_honor (deleted_marker, sort_order, id);
 
-CREATE INDEX IF NOT EXISTS idx_cms_honor_visible_deleted_sort
+CREATE INDEX idx_cms_honor_visible_deleted_sort
     ON cms_honor (visible, deleted_marker, sort_order, id);
 
 UPDATE media_asset ma

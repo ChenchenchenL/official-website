@@ -7,10 +7,14 @@ import java.util.Arrays;
  */
 public enum MediaAssetStatusEnum {
 
+    ACTIVE("ACTIVE"),
+    DELETED("DELETED"),
+    @Deprecated
     TEMPORARY("TEMPORARY"),
+    @Deprecated
     BOUND("BOUND"),
-    UNBOUND("UNBOUND"),
-    DELETED("DELETED");
+    @Deprecated
+    UNBOUND("UNBOUND");
 
     private final String code;
 
@@ -27,5 +31,16 @@ public enum MediaAssetStatusEnum {
                 .filter(status -> status.code.equals(code))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unsupported media asset status: " + code));
+    }
+
+    public static boolean isDeleted(String code) {
+        return DELETED.code.equals(code);
+    }
+
+    public static boolean isActiveLike(String code) {
+        return ACTIVE.code.equals(code)
+                || TEMPORARY.code.equals(code)
+                || BOUND.code.equals(code)
+                || UNBOUND.code.equals(code);
     }
 }

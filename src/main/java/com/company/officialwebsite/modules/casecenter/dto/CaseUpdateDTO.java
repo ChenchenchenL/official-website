@@ -28,6 +28,9 @@ public class CaseUpdateDTO {
     @NotNull(message = "visible 不能为空")
     private Boolean visible;
 
+    @Size(max = 32, message = "内容状态最长 32 字符")
+    private String status;
+
     @NotNull(message = "乐观锁版本号不能为空")
     @PositiveOrZero(message = "乐观锁版本号不能为负数")
     private Integer version;
@@ -70,6 +73,14 @@ public class CaseUpdateDTO {
 
     public void setVisible(Boolean visible) {
         this.visible = visible;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public Integer getVersion() {

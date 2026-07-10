@@ -4,6 +4,7 @@ import com.company.officialwebsite.common.response.ApiResponse;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.modules.product.dto.ProductCreateDTO;
 import com.company.officialwebsite.modules.product.dto.ProductSortItemDTO;
+import com.company.officialwebsite.modules.product.dto.ProductStatusUpdateDTO;
 import com.company.officialwebsite.modules.product.dto.ProductUpdateDTO;
 import com.company.officialwebsite.modules.product.service.ProductService;
 import com.company.officialwebsite.modules.product.vo.ProductVO;
@@ -70,5 +71,13 @@ public class AdminProductController {
     public ApiResponse<Void> batchSortProducts(@Valid @RequestBody List<@Valid ProductSortItemDTO> sortItems) {
         productService.batchSort(sortItems);
         return ApiResponse.success();
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<ProductVO> updateProductStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody ProductStatusUpdateDTO statusDTO) {
+        return ApiResponse.success(productService.updateProductStatus(id, statusDTO.getStatus(), statusDTO.getVersion()));
     }
 }

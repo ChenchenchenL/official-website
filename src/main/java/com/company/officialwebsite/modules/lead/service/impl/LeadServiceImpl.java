@@ -136,7 +136,7 @@ public class LeadServiceImpl implements LeadService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional()
     public AdminLeadDetailVO getAdminLeadDetail(Long id) {
         LeadEntity entity = requireLead(id);
         log.info("view lead detail id={}", id);

@@ -23,8 +23,12 @@ import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
 import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
 import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
+import com.company.officialwebsite.modules.content.mapper.ContentRelationMapper;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
+import com.company.officialwebsite.modules.product.converter.ProductConverter;
+import com.company.officialwebsite.modules.product.mapper.ProductMapper;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -49,6 +53,15 @@ class CaseServiceImplTest {
     private CaseConverter caseConverter;
 
     @Mock
+    private ProductMapper productMapper;
+
+    @Mock
+    private ProductConverter productConverter;
+
+    @Mock
+    private ContentRelationMapper contentRelationMapper;
+
+    @Mock
     private MediaAssetService mediaAssetService;
 
     @Mock
@@ -66,6 +79,9 @@ class CaseServiceImplTest {
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
+    @Mock
+    private ContentReferenceGuard contentReferenceGuard;
+
     private CaseServiceImpl service;
 
     @BeforeEach
@@ -75,11 +91,15 @@ class CaseServiceImplTest {
         service = new CaseServiceImpl(
                 caseMapper,
                 caseConverter,
+                productMapper,
+                productConverter,
+                contentRelationMapper,
                 mediaAssetService,
                 auditLogService,
                 properties,
                 new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, properties, new ObjectMapper().registerModule(new JavaTimeModule())),
-                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
+                contentReferenceGuard);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:cases");
     }

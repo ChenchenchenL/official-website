@@ -28,6 +28,9 @@ public class ProductCreateDTO {
     @Size(max = 64, message = "状态标签最长 64 字符")
     private String statusTag;
 
+    @Size(max = 32, message = "内容状态最长 32 字符")
+    private String status;
+
     @Size(max = 256, message = "详情跳转链接最长 256 字符")
     private String detailLink;
 
@@ -75,6 +78,14 @@ public class ProductCreateDTO {
 
     public void setStatusTag(String statusTag) {
         this.statusTag = statusTag;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public String getDetailLink() {

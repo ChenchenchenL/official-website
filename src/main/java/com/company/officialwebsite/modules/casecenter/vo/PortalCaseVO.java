@@ -7,10 +7,20 @@ import java.util.List;
  */
 public class PortalCaseVO {
 
+    private Long id;
     private String title;
     private String logoUrl;
     private String summary;
     private List<String> keywords;
+    private String status;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getTitle() {
         return title;
@@ -42,5 +52,13 @@ public class PortalCaseVO {
 
     public void setKeywords(List<String> keywords) {
         this.keywords = keywords;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

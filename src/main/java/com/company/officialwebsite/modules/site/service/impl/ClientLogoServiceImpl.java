@@ -8,6 +8,7 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.dto.ClientLogoCreateRequestDTO;
@@ -55,16 +56,19 @@ public class ClientLogoServiceImpl implements ClientLogoService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ContentReferenceGuard contentReferenceGuard;
 
     public ClientLogoServiceImpl(
             ClientLogoMapper clientLogoMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ContentReferenceGuard contentReferenceGuard) {
         this.clientLogoMapper = clientLogoMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.contentReferenceGuard = contentReferenceGuard;
     }
 
     @Override
@@ -122,6 +126,7 @@ public class ClientLogoServiceImpl implements ClientLogoService {
     public void deleteClientLogo(Long clientLogoId, ClientLogoDeleteRequestDTO requestDTO) {
         ClientLogoEntity entity = requireActiveClientLogo(clientLogoId);
         assertVersion(entity.getVersion(), requestDTO.getVersion());
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
         Map<String, Object> before = toSnapshot(entity);
         int deleted = clientLogoMapper.update(
                 null,

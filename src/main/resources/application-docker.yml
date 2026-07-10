@@ -14,6 +14,13 @@ spring:
       database: ${OW_REDIS_DATABASE:0}
 
 official:
+  cors:
+    admin:
+      allowed-origins:
+        - http://localhost:5173
+    portal:
+      allowed-origins:
+        - http://localhost:5173
   storage:
     local-root-dir: ${OW_MEDIA_ROOT_DIR:/var/lib/official-website/media}
     public-url-prefix: ${OW_MEDIA_PUBLIC_URL_PREFIX:/media/public/}

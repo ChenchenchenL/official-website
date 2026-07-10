@@ -10,6 +10,7 @@ import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.common.utils.StringFieldUtils;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.product.converter.IndustrySolutionConverter;
 import com.company.officialwebsite.modules.product.dto.IndustrySolutionBatchSortDTO;
@@ -61,6 +62,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
     private final ApplicationEventPublisher eventPublisher;
+    private final ContentReferenceGuard contentReferenceGuard;
     private final int sortGap;
 
     public IndustrySolutionServiceImpl(
@@ -70,13 +72,15 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
             PortalCacheSupport portalCacheSupport,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ContentReferenceGuard contentReferenceGuard) {
         this.industrySolutionMapper = industrySolutionMapper;
         this.industrySolutionConverter = industrySolutionConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
         this.eventPublisher = eventPublisher;
+        this.contentReferenceGuard = contentReferenceGuard;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -157,6 +161,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
     public List<AdminIndustrySolutionVO> deleteIndustrySolution(Long id, IndustrySolutionDeleteDTO deleteDTO) {
         IndustrySolutionEntity entity = requireActiveIndustrySolution(id);
         ConcurrencyHelper.assertVersion(entity.getVersion(), deleteDTO.getVersion());
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
         Map<String, Object> before = toSnapshot(entity);
 
         int deleted = industrySolutionMapper.delete(

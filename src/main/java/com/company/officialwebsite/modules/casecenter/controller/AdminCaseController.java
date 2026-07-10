@@ -5,6 +5,7 @@ import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.modules.casecenter.dto.CaseBatchSortDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseDeleteDTO;
+import com.company.officialwebsite.modules.casecenter.dto.CaseStatusUpdateDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseUpdateDTO;
 import com.company.officialwebsite.modules.casecenter.service.CaseService;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
@@ -68,5 +69,13 @@ public class AdminCaseController {
     @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ApiResponse<List<AdminCaseVO>> batchSortCases(@Valid @RequestBody CaseBatchSortDTO sortDTO) {
         return ApiResponse.success(caseService.batchSortCases(sortDTO));
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<AdminCaseVO> updateCaseStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody CaseStatusUpdateDTO statusDTO) {
+        return ApiResponse.success(caseService.updateCaseStatus(id, statusDTO.getStatus(), statusDTO.getVersion()));
     }
 }

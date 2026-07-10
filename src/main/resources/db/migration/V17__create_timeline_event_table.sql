@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS cms_timeline_event (
     CONSTRAINT uk_cms_timeline_year_title_del UNIQUE (event_year, title, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cms_timeline_visible_del_year
+CREATE INDEX idx_cms_timeline_visible_del_year
     ON cms_timeline_event (visible, deleted_marker, event_year, sort_order, id);
 
 INSERT INTO cms_timeline_event (

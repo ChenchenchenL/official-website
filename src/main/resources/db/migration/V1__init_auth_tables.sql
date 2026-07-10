@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS sys_user (
     CONSTRAINT uk_sys_user_username_deleted_marker UNIQUE (username, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sys_user_role_code_deleted_marker ON sys_user (role_code, deleted_marker);
-CREATE INDEX IF NOT EXISTS idx_sys_user_status_deleted_marker ON sys_user (status, deleted_marker);
+CREATE INDEX idx_sys_user_role_code_deleted_marker ON sys_user (role_code, deleted_marker);
+CREATE INDEX idx_sys_user_status_deleted_marker ON sys_user (status, deleted_marker);
 
 UPDATE sys_user
 SET role_code = 'ADMINISTRATOR'

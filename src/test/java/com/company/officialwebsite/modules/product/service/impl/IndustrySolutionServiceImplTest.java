@@ -18,6 +18,7 @@ import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheInvalidationSupport;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheKeyBuilder;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.product.converter.IndustrySolutionConverter;
@@ -66,6 +67,9 @@ class IndustrySolutionServiceImplTest {
     @Mock
     private IndustrySolutionConverter industrySolutionConverter;
 
+    @Mock
+    private ContentReferenceGuard contentReferenceGuard;
+
     private OfficialProperties officialProperties;
 
     private IndustrySolutionServiceImpl service;
@@ -81,7 +85,8 @@ class IndustrySolutionServiceImplTest {
                 auditLogService,
                 officialProperties,
                 new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, officialProperties, new ObjectMapper().registerModule(new JavaTimeModule())),
-                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
+                contentReferenceGuard);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:industry_solutions");
     }

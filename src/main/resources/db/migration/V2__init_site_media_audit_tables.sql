@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS media_asset (
     CONSTRAINT pk_media_asset PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_asset_type_status_deleted_marker
+CREATE INDEX idx_media_asset_type_status_deleted_marker
     ON media_asset (media_type, status, deleted_marker);
 
 CREATE TABLE IF NOT EXISTS media_reference (
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS media_reference (
     CONSTRAINT uk_media_reference_biz_field_deleted_marker UNIQUE (biz_module, biz_object_id, biz_field, deleted_marker)
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_reference_media_id_deleted_marker
+CREATE INDEX idx_media_reference_media_id_deleted_marker
     ON media_reference (media_id, deleted_marker);
 
 CREATE TABLE IF NOT EXISTS sys_audit_log (
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS sys_audit_log (
     CONSTRAINT pk_sys_audit_log PRIMARY KEY (id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sys_audit_log_module_action_occurred_at
+CREATE INDEX idx_sys_audit_log_module_action_occurred_at
     ON sys_audit_log (module_name, action_name, occurred_at);
 
 INSERT INTO cms_site_config (

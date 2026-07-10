@@ -1,22 +1,29 @@
 package com.company.officialwebsite.modules.media.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.enums.MediaAssetStatusEnum;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
+import com.company.officialwebsite.common.response.PageResult;
+import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.infrastructure.storage.LocalMediaStorageService;
+import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
+import com.company.officialwebsite.modules.media.dto.MediaAssetUpdateDTO;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.entity.MediaReferenceEntity;
 import com.company.officialwebsite.modules.media.mapper.MediaAssetMapper;
 import com.company.officialwebsite.modules.media.mapper.MediaReferenceMapper;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.media.support.MediaValidationSupport;
+import com.company.officialwebsite.modules.media.vo.MediaAssetVO;
 import com.company.officialwebsite.modules.media.vo.MediaUploadVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +44,11 @@ public class MediaAssetServiceImpl implements MediaAssetService {
     private static final String BIZ_MODULE = "MEDIA";
     private static final String TARGET_TYPE = "MEDIA_ASSET";
     private static final String ACTION_UPLOAD = "UPLOAD_MEDIA";
+    private static final String ACTION_UPDATE = "UPDATE_MEDIA";
+    private static final String ACTION_DELETE = "DELETE_MEDIA";
+    private static final String DEFAULT_USAGE_TAG = "OTHER";
+    private static final List<String> ACTIVE_LIKE_STATUSES = List.of("ACTIVE", "TEMPORARY", "BOUND", "UNBOUND");
+    private static final List<String> USAGE_TAGS = List.of("LOGO", "BANNER", "PRODUCT", "CASE", "CLIENT", "HONOR", "ICON", "OTHER");
 
     private final MediaAssetMapper mediaAssetMapper;
     private final MediaReferenceMapper mediaReferenceMapper;
@@ -45,6 +57,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
     private final MediaValidationSupport mediaValidationSupport;
     private final AuditLogService auditLogService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ContentReferenceGuard contentReferenceGuard;
 
     public MediaAssetServiceImpl(
             MediaAssetMapper mediaAssetMapper,
@@ -53,7 +66,8 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             OfficialProperties officialProperties,
             MediaValidationSupport mediaValidationSupport,
             AuditLogService auditLogService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ContentReferenceGuard contentReferenceGuard) {
         this.mediaAssetMapper = mediaAssetMapper;
         this.mediaReferenceMapper = mediaReferenceMapper;
         this.localMediaStorageService = localMediaStorageService;
@@ -61,6 +75,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         this.mediaValidationSupport = mediaValidationSupport;
         this.auditLogService = auditLogService;
         this.eventPublisher = eventPublisher;
+        this.contentReferenceGuard = contentReferenceGuard;
     }
 
     @Override
@@ -94,12 +109,13 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 
         MediaAssetEntity entity = new MediaAssetEntity();
         entity.setMediaType(mediaType);
-        entity.setStatus(MediaAssetStatusEnum.TEMPORARY.getCode());
+        entity.setStatus(MediaAssetStatusEnum.ACTIVE.getCode());
         entity.setOriginalFilename(originalFilename);
         entity.setContentType(file.getContentType());
         entity.setStoragePath(relativePath);
         entity.setPublicUrl(buildPublicUrl(relativePath));
         entity.setFileSize(file.getSize());
+        entity.setUsageTag(DEFAULT_USAGE_TAG);
 
         try {
             mediaAssetMapper.insert(entity);
@@ -117,6 +133,105 @@ public class MediaAssetServiceImpl implements MediaAssetService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PageResult<MediaAssetVO> listAssets(
+            String keyword, String mediaType, String usageTag, String status, Integer page, Integer size) {
+        int normalizedPageNo = page == null || page <= 0 ? 1 : page;
+        int normalizedPageSize = size == null || size <= 0 ? 20 : Math.min(size, 100);
+
+        LambdaQueryWrapper<MediaAssetEntity> wrapper = new LambdaQueryWrapper<MediaAssetEntity>()
+                .eq(MediaAssetEntity::getDeletedMarker, 0L);
+
+        if (StringUtils.hasText(keyword)) {
+            String normalizedKeyword = keyword.trim();
+            wrapper.and(query -> query
+                    .like(MediaAssetEntity::getOriginalFilename, normalizedKeyword)
+                    .or()
+                    .like(MediaAssetEntity::getPublicUrl, normalizedKeyword)
+                    .or()
+                    .like(MediaAssetEntity::getStoragePath, normalizedKeyword)
+                    .or()
+                    .like(MediaAssetEntity::getAltText, normalizedKeyword)
+                    .or()
+                    .like(MediaAssetEntity::getRemark, normalizedKeyword));
+        }
+        if (StringUtils.hasText(mediaType)) {
+            String normalizedMediaType = normalizeMediaType(mediaType);
+            wrapper.eq(MediaAssetEntity::getMediaType, normalizedMediaType);
+        }
+        if (StringUtils.hasText(usageTag)) {
+            wrapper.eq(MediaAssetEntity::getUsageTag, normalizeUsageTag(usageTag));
+        }
+        if (StringUtils.hasText(status)) {
+            String normalizedStatus = normalizeStatus(status);
+            if (MediaAssetStatusEnum.ACTIVE.getCode().equals(normalizedStatus)) {
+                wrapper.in(MediaAssetEntity::getStatus, ACTIVE_LIKE_STATUSES);
+            } else {
+                wrapper.eq(MediaAssetEntity::getStatus, normalizedStatus);
+            }
+        }
+
+        Page<MediaAssetEntity> pageResult = mediaAssetMapper.selectPage(
+                new Page<>(normalizedPageNo, normalizedPageSize),
+                wrapper.orderByDesc(MediaAssetEntity::getCreatedAt).orderByDesc(MediaAssetEntity::getId));
+        List<MediaAssetVO> list = pageResult.getRecords().stream().map(this::toVO).toList();
+        return PageResult.of(list, pageResult.getTotal(), normalizedPageNo, normalizedPageSize);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MediaAssetVO getAsset(Long id) {
+        return toVO(requireAsset(id));
+    }
+
+    @Override
+    @Transactional
+    public MediaAssetVO updateAsset(Long id, MediaAssetUpdateDTO updateDTO) {
+        MediaAssetEntity entity = requireAsset(id);
+        if (MediaAssetStatusEnum.isDeleted(entity.getStatus())) {
+            throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "已删除媒体不能编辑");
+        }
+        ConcurrencyHelper.assertVersion(entity.getVersion(), updateDTO.getVersion());
+        Map<String, Object> before = toSnapshot(entity);
+
+        entity.setUsageTag(StringUtils.hasText(updateDTO.getUsageTag())
+                ? normalizeUsageTag(updateDTO.getUsageTag())
+                : DEFAULT_USAGE_TAG);
+        entity.setAltText(trimToNull(updateDTO.getAltText()));
+        entity.setRemark(trimToNull(updateDTO.getRemark()));
+        ConcurrencyHelper.tryUpdate(mediaAssetMapper, entity);
+
+        log.info("update media asset success id={} version={}", entity.getId(), entity.getVersion());
+        recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        return toVO(entity);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAsset(Long id, Integer version) {
+        MediaAssetEntity entity = requireAsset(id);
+        ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+        if (MediaAssetStatusEnum.isDeleted(entity.getStatus())) {
+            return;
+        }
+        contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
+
+        boolean referenced = mediaReferenceMapper.selectCount(new LambdaQueryWrapper<MediaReferenceEntity>()
+                .eq(MediaReferenceEntity::getMediaId, id)
+                .eq(MediaReferenceEntity::getDeletedMarker, 0L)) > 0;
+        if (referenced) {
+            throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "该媒体正在被使用，无法删除");
+        }
+
+        Map<String, Object> before = toSnapshot(entity);
+        entity.setStatus(MediaAssetStatusEnum.DELETED.getCode());
+        ConcurrencyHelper.tryUpdate(mediaAssetMapper, entity);
+
+        log.info("delete media asset success id={}", entity.getId());
+        recordAudit(ACTION_DELETE, entity.getId(), before, toSnapshot(entity));
+    }
+
+    @Override
     public MediaAssetEntity requireUsableImage(Long mediaId) {
         if (mediaId == null) {
             return null;
@@ -128,8 +243,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         if (!"IMAGE".equals(entity.getMediaType())) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND);
         }
-        MediaAssetStatusEnum status = MediaAssetStatusEnum.fromCode(entity.getStatus());
-        if (status == MediaAssetStatusEnum.DELETED) {
+        if (MediaAssetStatusEnum.isDeleted(entity.getStatus())) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND);
         }
         return entity;
@@ -192,13 +306,41 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         if (MediaAssetStatusEnum.DELETED.getCode().equals(entity.getStatus())) {
             return;
         }
-        boolean referenced = mediaReferenceMapper.selectCount(new LambdaQueryWrapper<MediaReferenceEntity>()
-                .eq(MediaReferenceEntity::getMediaId, mediaId)
-                .eq(MediaReferenceEntity::getDeletedMarker, 0L)) > 0;
-        entity.setStatus(referenced
-                ? MediaAssetStatusEnum.BOUND.getCode()
-                : MediaAssetStatusEnum.UNBOUND.getCode());
+        entity.setStatus(MediaAssetStatusEnum.ACTIVE.getCode());
         mediaAssetMapper.updateById(entity);
+    }
+
+    private MediaAssetEntity requireAsset(Long id) {
+        if (id == null) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "媒体ID不能为空");
+        }
+        MediaAssetEntity entity = mediaAssetMapper.selectOne(new LambdaQueryWrapper<MediaAssetEntity>()
+                .eq(MediaAssetEntity::getId, id)
+                .eq(MediaAssetEntity::getDeletedMarker, 0L));
+        if (entity == null) {
+            throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "媒体不存在或已被删除");
+        }
+        return entity;
+    }
+
+    private MediaAssetVO toVO(MediaAssetEntity entity) {
+        MediaAssetVO vo = new MediaAssetVO();
+        vo.setId(entity.getId());
+        vo.setMediaType(entity.getMediaType());
+        vo.setStatus(MediaAssetStatusEnum.isDeleted(entity.getStatus()) ? "DELETED" : "ACTIVE");
+        vo.setOriginalFilename(entity.getOriginalFilename());
+        vo.setContentType(entity.getContentType());
+        vo.setStoragePath(entity.getStoragePath());
+        vo.setPublicUrl(entity.getPublicUrl());
+        vo.setAbsoluteUrl(buildAbsoluteUrl(entity.getPublicUrl()));
+        vo.setFileSize(entity.getFileSize());
+        vo.setUsageTag(StringUtils.hasText(entity.getUsageTag()) ? entity.getUsageTag() : DEFAULT_USAGE_TAG);
+        vo.setAltText(entity.getAltText());
+        vo.setRemark(entity.getRemark());
+        vo.setVersion(entity.getVersion());
+        vo.setCreatedAt(entity.getCreatedAt());
+        vo.setUpdatedAt(entity.getUpdatedAt());
+        return vo;
     }
 
     private MediaUploadVO buildUploadVO(MediaAssetEntity entity) {
@@ -212,6 +354,38 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         vo.setUrl(entity.getPublicUrl());
         vo.setAbsoluteUrl(buildAbsoluteUrl(entity.getPublicUrl()));
         return vo;
+    }
+
+    private String normalizeMediaType(String mediaType) {
+        String normalized = mediaType.trim().toUpperCase();
+        if (!"IMAGE".equals(normalized) && !"DOCUMENT".equals(normalized)) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "媒体类型不合法");
+        }
+        return normalized;
+    }
+
+    private String normalizeUsageTag(String usageTag) {
+        String normalized = usageTag.trim().toUpperCase();
+        if (!USAGE_TAGS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "媒体用途不合法");
+        }
+        return normalized;
+    }
+
+    private String normalizeStatus(String status) {
+        String normalized = status.trim().toUpperCase();
+        if (!MediaAssetStatusEnum.ACTIVE.getCode().equals(normalized)
+                && !MediaAssetStatusEnum.DELETED.getCode().equals(normalized)) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "媒体状态不合法");
+        }
+        return normalized;
+    }
+
+    private String trimToNull(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     private String buildPublicUrl(String relativePath) {
@@ -243,8 +417,34 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         snapshot.put("originalFilename", entity.getOriginalFilename());
         snapshot.put("contentType", entity.getContentType());
         snapshot.put("fileSize", entity.getFileSize());
+        snapshot.put("usageTag", entity.getUsageTag());
+        snapshot.put("altText", entity.getAltText());
+        snapshot.put("remark", entity.getRemark());
+        snapshot.put("status", entity.getStatus());
+        snapshot.put("version", entity.getVersion());
         snapshot.put("path", entity.getStoragePath());
         snapshot.put("url", entity.getPublicUrl());
         auditLogService.recordGenericOperation(BIZ_MODULE, ACTION_UPLOAD, TARGET_TYPE, entity.getId(), null, snapshot);
+    }
+
+    private void recordAudit(String actionName, Long targetId, Object before, Object after) {
+        auditLogService.recordGenericOperation(BIZ_MODULE, actionName, TARGET_TYPE, targetId, before, after);
+    }
+
+    private Map<String, Object> toSnapshot(MediaAssetEntity entity) {
+        Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("mediaId", entity.getId());
+        snapshot.put("mediaType", entity.getMediaType());
+        snapshot.put("originalFilename", entity.getOriginalFilename());
+        snapshot.put("contentType", entity.getContentType());
+        snapshot.put("fileSize", entity.getFileSize());
+        snapshot.put("usageTag", entity.getUsageTag());
+        snapshot.put("altText", entity.getAltText());
+        snapshot.put("remark", entity.getRemark());
+        snapshot.put("status", entity.getStatus());
+        snapshot.put("version", entity.getVersion());
+        snapshot.put("path", entity.getStoragePath());
+        snapshot.put("url", entity.getPublicUrl());
+        return snapshot;
     }
 }

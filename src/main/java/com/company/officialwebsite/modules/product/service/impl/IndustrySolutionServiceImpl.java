@@ -18,6 +18,7 @@ import com.company.officialwebsite.modules.product.dto.IndustrySolutionDeleteDTO
 import com.company.officialwebsite.modules.product.dto.IndustrySolutionUpdateDTO;
 import com.company.officialwebsite.modules.product.entity.IndustrySolutionEntity;
 import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.product.service.IndustrySolutionService;
 import com.company.officialwebsite.modules.product.vo.AdminIndustrySolutionVO;
 import com.company.officialwebsite.modules.product.vo.PortalIndustrySolutionVO;
@@ -32,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +60,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public IndustrySolutionServiceImpl(
@@ -66,12 +69,14 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.industrySolutionMapper = industrySolutionMapper;
         this.industrySolutionConverter = industrySolutionConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -142,6 +147,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
 
         log.info("update industry solution success solutionId={} version={}", entity.getId(), entity.getVersion());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "product", "IndustrySolution", String.valueOf(id)));
         invalidatePortalCache();
         return getAdminSolutionVOList();
     }
@@ -165,6 +171,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
 
         log.info("delete industry solution success solutionId={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "product", "IndustrySolution", String.valueOf(entity.getId())));
         invalidatePortalCache();
         return getAdminSolutionVOList();
     }

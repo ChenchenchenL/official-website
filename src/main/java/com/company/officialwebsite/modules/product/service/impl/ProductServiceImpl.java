@@ -15,6 +15,7 @@ import com.company.officialwebsite.modules.product.dto.ProductCreateDTO;
 import com.company.officialwebsite.modules.product.dto.ProductSortItemDTO;
 import com.company.officialwebsite.modules.product.dto.ProductUpdateDTO;
 import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.product.mapper.ProductMapper;
 import com.company.officialwebsite.modules.product.service.ProductService;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
@@ -29,6 +30,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +57,7 @@ public class ProductServiceImpl implements ProductService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public ProductServiceImpl(
@@ -63,12 +66,14 @@ public class ProductServiceImpl implements ProductService {
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.productMapper = productMapper;
         this.productConverter = productConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -175,6 +180,7 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("update product success productId={} version={}", entity.getId(), entity.getVersion());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "product", "Product", String.valueOf(id)));
         invalidatePortalCache();
     }
 
@@ -198,6 +204,7 @@ public class ProductServiceImpl implements ProductService {
 
         log.info("delete product success productId={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "product", "Product", String.valueOf(entity.getId())));
         invalidatePortalCache();
     }
 

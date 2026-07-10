@@ -78,7 +78,8 @@ class CaseServiceImplTest {
                 mediaAssetService,
                 auditLogService,
                 properties,
-                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, properties, new ObjectMapper().registerModule(new JavaTimeModule())));
+                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, properties, new ObjectMapper().registerModule(new JavaTimeModule())),
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:cases");
     }

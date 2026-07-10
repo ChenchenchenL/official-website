@@ -96,6 +96,12 @@ public enum ErrorCode {
     LEAD_EXPORT_TOO_LARGE(70006, "LEAD", "导出数据量超过上限"),
     LEAD_SUBMIT_RATE_LIMITED(70007, "LEAD", "同一 IP 提交过于频繁"),
 
+    PAGE_NOT_FOUND(90001, "PAGE", "页面定义不存在或已被逻辑删除"),
+    PAGE_KEY_DUPLICATE(90002, "PAGE", "页面唯一Key标识已存在"),
+    PAGE_ROUTE_DUPLICATE(90003, "PAGE", "页面路由路径已存在"),
+    PAGE_DRAFT_NOT_FOUND(90004, "PAGE", "页面草稿不存在"),
+    PAGE_PREVIEW_TOKEN_EXPIRED(90005, "PAGE", "预览链接已失效或不存在"),
+
     SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
 
     private final int code;

@@ -14,6 +14,7 @@ import com.company.officialwebsite.modules.site.dto.NavigationMenuUpdateRequestD
 import com.company.officialwebsite.modules.site.dto.NavigationMenuVisibilityUpdateRequestDTO;
 import com.company.officialwebsite.modules.site.entity.NavigationMenuEntity;
 import com.company.officialwebsite.modules.site.mapper.NavigationMenuMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.site.service.NavigationMenuService;
 import com.company.officialwebsite.modules.site.vo.AdminNavigationMenuVO;
 import com.company.officialwebsite.modules.site.vo.PortalNavigationMenuVO;
@@ -33,6 +34,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,16 +63,19 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
     private final NavigationMenuMapper navigationMenuMapper;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public NavigationMenuServiceImpl(
             NavigationMenuMapper navigationMenuMapper,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.navigationMenuMapper = navigationMenuMapper;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -113,6 +118,7 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
         log.info("update navigation menu success menuId={} parentId={} targetType={} visible={}",
                 entity.getId(), entity.getParentId(), entity.getTargetType(), entity.getVisible());
         recordMenuAudit(ACTION_UPDATE, entity.getId(), before, toAdminFlatSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "NavigationMenu", String.valueOf(menuId)));
         invalidatePortalNavigation();
         return buildAdminTree(listActiveMenus());
     }
@@ -129,6 +135,7 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
         tryUpdate(entity);
         log.info("change navigation visibility success menuId={} visible={}", entity.getId(), entity.getVisible());
         recordMenuAudit(ACTION_CHANGE_VISIBILITY, entity.getId(), before, toAdminFlatSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "NavigationMenu", String.valueOf(menuId)));
         invalidatePortalNavigation();
         return buildAdminTree(listActiveMenus());
     }
@@ -151,6 +158,7 @@ public class NavigationMenuServiceImpl implements NavigationMenuService {
 
         log.info("delete navigation menu success menuId={} cascadeChildrenCount={}", entity.getId(), cascadeChildren.size());
         recordMenuAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "NavigationMenu", String.valueOf(menuId)));
         invalidatePortalNavigation();
         return buildAdminTree(listActiveMenus());
     }

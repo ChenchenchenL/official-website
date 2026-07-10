@@ -14,6 +14,7 @@ import com.company.officialwebsite.modules.site.dto.TimelineEventCreateRequestDT
 import com.company.officialwebsite.modules.site.dto.TimelineEventUpdateRequestDTO;
 import com.company.officialwebsite.modules.site.entity.TimelineEventEntity;
 import com.company.officialwebsite.modules.site.mapper.TimelineEventMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.site.service.TimelineEventService;
 import com.company.officialwebsite.modules.site.vo.AdminTimelineEventVO;
 import com.company.officialwebsite.modules.site.vo.PortalTimelineEventVO;
@@ -27,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,16 +68,19 @@ public class TimelineEventServiceImpl implements TimelineEventService {
     private final TimelineEventMapper timelineEventMapper;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public TimelineEventServiceImpl(
             TimelineEventMapper timelineEventMapper,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.timelineEventMapper = timelineEventMapper;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -129,6 +134,7 @@ public class TimelineEventServiceImpl implements TimelineEventService {
         }
         log.info("update timeline event success id={} year={} title={}", entity.getId(), entity.getEventYear(), entity.getTitle());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "TimelineEvent", String.valueOf(id)));
         invalidatePortalCache();
     }
 
@@ -144,6 +150,7 @@ public class TimelineEventServiceImpl implements TimelineEventService {
         }
         log.info("delete timeline event success id={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "TimelineEvent", String.valueOf(id)));
         invalidatePortalCache();
     }
 

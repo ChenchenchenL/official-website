@@ -17,6 +17,8 @@ import com.company.officialwebsite.modules.system.service.AuditLogService;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+import org.springframework.context.ApplicationEventPublisher;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -54,14 +56,17 @@ public class ContactInfoServiceImpl implements ContactInfoService {
     private final ContactInfoMapper contactInfoMapper;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ContactInfoServiceImpl(
             ContactInfoMapper contactInfoMapper,
             AuditLogService auditLogService,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.contactInfoMapper = contactInfoMapper;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -91,6 +96,7 @@ public class ContactInfoServiceImpl implements ContactInfoService {
                 entity.getId(), requestDTO.getVersion(), entity.getVersion());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
         invalidatePortalCache();
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "lead", "ContactInfo", "default"));
     }
 
     @Override

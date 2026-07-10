@@ -16,6 +16,7 @@ import com.company.officialwebsite.modules.site.dto.ValueCardCreateRequestDTO;
 import com.company.officialwebsite.modules.site.dto.ValueCardUpdateRequestDTO;
 import com.company.officialwebsite.modules.site.entity.ValueCardEntity;
 import com.company.officialwebsite.modules.site.mapper.ValueCardMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.site.service.ValueCardService;
 import com.company.officialwebsite.modules.site.vo.AdminValueCardVO;
 import com.company.officialwebsite.modules.site.vo.PortalValueCardVO;
@@ -29,6 +30,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +65,7 @@ public class ValueCardServiceImpl implements ValueCardService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public ValueCardServiceImpl(
@@ -70,11 +73,13 @@ public class ValueCardServiceImpl implements ValueCardService {
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.valueCardMapper = valueCardMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -131,6 +136,7 @@ public class ValueCardServiceImpl implements ValueCardService {
         }
         log.info("update value card success id={} title={}", entity.getId(), entity.getTitle());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "ValueCard", String.valueOf(id)));
         invalidatePortalCache();
     }
 
@@ -147,6 +153,7 @@ public class ValueCardServiceImpl implements ValueCardService {
         handleIconBinding(entity.getIconMediaId(), null, entity.getId());
         log.info("delete value card success id={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "ValueCard", String.valueOf(id)));
         invalidatePortalCache();
     }
 

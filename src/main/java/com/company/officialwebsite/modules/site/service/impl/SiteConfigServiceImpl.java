@@ -11,12 +11,14 @@ import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.site.dto.SiteConfigUpdateRequestDTO;
 import com.company.officialwebsite.modules.site.entity.SiteConfigEntity;
 import com.company.officialwebsite.modules.site.mapper.SiteConfigMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.site.service.SiteConfigService;
 import com.company.officialwebsite.modules.site.vo.AdminSiteConfigVO;
 import com.company.officialwebsite.modules.site.vo.PortalSiteConfigVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,16 +36,19 @@ public class SiteConfigServiceImpl implements SiteConfigService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
 
     public SiteConfigServiceImpl(
             SiteConfigMapper siteConfigMapper,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.siteConfigMapper = siteConfigMapper;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -106,6 +111,7 @@ public class SiteConfigServiceImpl implements SiteConfigService {
         log.info("update site config success configId={} previousVersion={} currentVersion={} lightLogoMediaId={} darkLogoMediaId={}",
                 entity.getId(), before.getVersion(), after.getVersion(), after.getLogoLightMediaId(), after.getLogoDarkMediaId());
         auditLogService.recordSiteConfigUpdate(entity.getId(), before, after);
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "SiteConfig", "default"));
         // 事务提交后统一失效 Portal 缓存，保证多实例场景下不会继续返回旧站点配置。
         portalCacheSupport.invalidatePortalKey(CACHE_SEGMENT);
         return after;

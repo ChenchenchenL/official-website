@@ -14,6 +14,7 @@ import com.company.officialwebsite.modules.site.dto.PromiseTagCreateRequestDTO;
 import com.company.officialwebsite.modules.site.dto.PromiseTagUpdateRequestDTO;
 import com.company.officialwebsite.modules.site.entity.PromiseTagEntity;
 import com.company.officialwebsite.modules.site.mapper.PromiseTagMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.site.service.PromiseModuleConstants;
 import com.company.officialwebsite.modules.site.service.PromiseTagService;
 import com.company.officialwebsite.modules.site.vo.AdminPromiseTagVO;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,16 +58,19 @@ public class PromiseTagServiceImpl implements PromiseTagService {
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
     private final OfficialProperties officialProperties;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PromiseTagServiceImpl(
             PromiseTagMapper promiseTagMapper,
             AuditLogService auditLogService,
             PortalCacheSupport portalCacheSupport,
-            OfficialProperties officialProperties) {
+            OfficialProperties officialProperties,
+            ApplicationEventPublisher eventPublisher) {
         this.promiseTagMapper = promiseTagMapper;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
         this.officialProperties = officialProperties;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -117,6 +122,7 @@ public class PromiseTagServiceImpl implements PromiseTagService {
         }
         log.info("update promise tag success id={} tagText={}", entity.getId(), entity.getTagText());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "PromiseTag", String.valueOf(id)));
         invalidatePortalCache();
     }
 
@@ -132,6 +138,7 @@ public class PromiseTagServiceImpl implements PromiseTagService {
         }
         log.info("delete promise tag success id={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "PromiseTag", String.valueOf(id)));
         invalidatePortalCache();
     }
 

@@ -1,3 +1,6 @@
+/workspace/src/test/java/com/company/officialwebsite/application/portal/EntityChangedCacheInvalidationIntegrationTest.java
+/workspace/src/test/java/com/company/officialwebsite/application/portal/EntityChangedEventListenerTest.java
+/workspace/src/test/java/com/company/officialwebsite/application/portal/PageBindingResolutionServiceTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/config/AsyncConfigurationTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/config/CacheConfigurationTest.java
 /workspace/src/test/java/com/company/officialwebsite/common/config/CorsConfigurationTest.java
@@ -13,6 +16,14 @@
 /workspace/src/test/java/com/company/officialwebsite/modules/lead/controller/CooperationDirectionTagControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/lead/controller/LeadControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/media/controller/AdminMediaAssetControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/controller/AdminComponentTemplateControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/controller/AdminPageDefinitionControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/controller/AdminPageDraftControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/controller/AdminPagePublishControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/controller/PortalPageRenderControllerTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/service/ComponentTemplateServiceTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/service/PageCacheInvalidationServiceTest.java
+/workspace/src/test/java/com/company/officialwebsite/modules/pagebuilder/service/PageSchemaValidationServiceTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/product/controller/IndustrySolutionControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/product/controller/ProductControllerTest.java
 /workspace/src/test/java/com/company/officialwebsite/modules/product/service/impl/IndustrySolutionServiceImplTest.java

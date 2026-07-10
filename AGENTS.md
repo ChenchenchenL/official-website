@@ -19,6 +19,8 @@ For the project blueprint, see [docs/项目蓝图.md](docs/项目蓝图.md).
 
 For API documentation, see [docs/接口文档.md](docs/接口文档.md). Every new, changed, or removed API must be reflected in that document.
 
+Please update the [docs/重构接口文档.md](docs/重构接口文档.md) for the refactored interface.
+
 ---
 
 ## Technology Stack

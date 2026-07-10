@@ -17,6 +17,7 @@ import com.company.officialwebsite.modules.casecenter.dto.CaseDeleteDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseUpdateDTO;
 import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
 import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.casecenter.service.CaseService;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
 import com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO;
@@ -32,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +73,7 @@ public class CaseServiceImpl implements CaseService {
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public CaseServiceImpl(
@@ -79,12 +82,14 @@ public class CaseServiceImpl implements CaseService {
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.caseMapper = caseMapper;
         this.caseConverter = caseConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -155,6 +160,7 @@ public class CaseServiceImpl implements CaseService {
 
         log.info("update case success caseId={} version={}", entity.getId(), entity.getVersion());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "casecenter", "Case", String.valueOf(id)));
         invalidatePortalCache();
         return listAdminCases();
     }
@@ -177,6 +183,7 @@ public class CaseServiceImpl implements CaseService {
         mediaAssetService.bindMedia(null, BIZ_MODULE, entity.getId(), MEDIA_BIZ_FIELD);
         log.info("delete case success caseId={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "casecenter", "Case", String.valueOf(entity.getId())));
         invalidatePortalCache();
         return listAdminCases();
     }

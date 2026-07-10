@@ -115,7 +115,9 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.MEDIA_FILE_TYPE_UNSUPPORTED
                 || errorCode == ErrorCode.MEDIA_FILE_SIGNATURE_INVALID
                 || errorCode == ErrorCode.MEDIA_UPLOAD_FAILED
-                || errorCode == ErrorCode.MEDIA_STORAGE_WRITE_FAILED) {
+                || errorCode == ErrorCode.MEDIA_STORAGE_WRITE_FAILED
+                || errorCode == ErrorCode.PAGE_KEY_DUPLICATE
+                || errorCode == ErrorCode.PAGE_ROUTE_DUPLICATE) {
             return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
@@ -147,7 +149,10 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_PROMISE_TAG_NOT_FOUND
                 || errorCode == ErrorCode.LEAD_CONTACT_INFO_NOT_FOUND
                 || errorCode == ErrorCode.LEAD_COOPERATION_DIRECTION_TAG_NOT_FOUND
-                || errorCode == ErrorCode.LEAD_RECORD_NOT_FOUND) {
+                || errorCode == ErrorCode.LEAD_RECORD_NOT_FOUND
+                || errorCode == ErrorCode.PAGE_NOT_FOUND
+                || errorCode == ErrorCode.PAGE_DRAFT_NOT_FOUND
+                || errorCode == ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

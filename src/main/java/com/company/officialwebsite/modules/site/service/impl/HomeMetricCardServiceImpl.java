@@ -12,6 +12,7 @@ import com.company.officialwebsite.modules.site.dto.HomeMetricCardUpdateRequestD
 import com.company.officialwebsite.modules.site.dto.HomeMetricCardVisibilityUpdateRequestDTO;
 import com.company.officialwebsite.modules.site.entity.HomeMetricCardEntity;
 import com.company.officialwebsite.modules.site.mapper.HomeMetricCardMapper;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.site.service.HomeMetricCardService;
 import com.company.officialwebsite.modules.site.vo.AdminHomeMetricCardVO;
 import com.company.officialwebsite.modules.site.vo.PortalHomeMetricCardVO;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,16 +57,19 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
     private final HomeMetricCardMapper homeMetricCardMapper;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public HomeMetricCardServiceImpl(
             HomeMetricCardMapper homeMetricCardMapper,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.homeMetricCardMapper = homeMetricCardMapper;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -98,6 +103,7 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
         tryUpdate(entity);
         log.info("update home metric card success metricId={} currentVersion={}", entity.getId(), entity.getVersion());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "HomeMetricCard", String.valueOf(metricId)));
         invalidatePortalMetrics();
         return getAdminMetricCards();
     }
@@ -117,6 +123,7 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
         log.info("change home metric card visibility success metricId={} visible={}",
                 entity.getId(), entity.getVisible());
         recordAudit(ACTION_CHANGE_VISIBILITY, entity.getId(), before, toSnapshot(entity));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "HomeMetricCard", String.valueOf(metricId)));
         invalidatePortalMetrics();
         return getAdminMetricCards();
     }
@@ -129,6 +136,7 @@ public class HomeMetricCardServiceImpl implements HomeMetricCardService {
         logicallyDeleteById(entity);
         log.info("delete home metric card success metricId={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "site", "HomeMetricCard", String.valueOf(metricId)));
         invalidatePortalMetrics();
         return getAdminMetricCards();
     }

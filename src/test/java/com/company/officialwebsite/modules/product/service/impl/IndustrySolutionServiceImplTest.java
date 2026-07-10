@@ -80,7 +80,8 @@ class IndustrySolutionServiceImplTest {
                 mediaAssetService,
                 auditLogService,
                 officialProperties,
-                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, officialProperties, new ObjectMapper().registerModule(new JavaTimeModule())));
+                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, officialProperties, new ObjectMapper().registerModule(new JavaTimeModule())),
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:industry_solutions");
     }

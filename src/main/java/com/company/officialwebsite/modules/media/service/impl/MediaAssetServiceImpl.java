@@ -5,6 +5,7 @@ import com.company.officialwebsite.common.config.properties.OfficialProperties;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.enums.MediaAssetStatusEnum;
 import com.company.officialwebsite.common.exception.BusinessException;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.infrastructure.storage.LocalMediaStorageService;
 import com.company.officialwebsite.modules.media.entity.MediaAssetEntity;
 import com.company.officialwebsite.modules.media.entity.MediaReferenceEntity;
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,6 +44,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
     private final OfficialProperties officialProperties;
     private final MediaValidationSupport mediaValidationSupport;
     private final AuditLogService auditLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public MediaAssetServiceImpl(
             MediaAssetMapper mediaAssetMapper,
@@ -49,13 +52,15 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             LocalMediaStorageService localMediaStorageService,
             OfficialProperties officialProperties,
             MediaValidationSupport mediaValidationSupport,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            ApplicationEventPublisher eventPublisher) {
         this.mediaAssetMapper = mediaAssetMapper;
         this.mediaReferenceMapper = mediaReferenceMapper;
         this.localMediaStorageService = localMediaStorageService;
         this.officialProperties = officialProperties;
         this.mediaValidationSupport = mediaValidationSupport;
         this.auditLogService = auditLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -148,8 +153,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         if (mediaId == null) {
             if (existing != null) {
                 mediaReferenceMapper.deleteById(existing.getId());
+                refreshMediaStatus(oldMediaId);
+                eventPublisher.publishEvent(EntityChangedEvent.of(this, "media", "MediaAsset", String.valueOf(oldMediaId)));
             }
-            refreshMediaStatus(oldMediaId);
             return;
         }
 
@@ -170,7 +176,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         refreshMediaStatus(mediaId);
         if (oldMediaId != null && !oldMediaId.equals(mediaId)) {
             refreshMediaStatus(oldMediaId);
+            eventPublisher.publishEvent(EntityChangedEvent.of(this, "media", "MediaAsset", String.valueOf(oldMediaId)));
         }
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "media", "MediaAsset", String.valueOf(mediaId)));
     }
 
     private void refreshMediaStatus(Long mediaId) {

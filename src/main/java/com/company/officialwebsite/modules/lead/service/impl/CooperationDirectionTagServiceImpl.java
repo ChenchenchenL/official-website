@@ -25,6 +25,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -54,16 +56,19 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
     private final CooperationDirectionTagMapper cooperationDirectionTagMapper;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final ApplicationEventPublisher eventPublisher;
     private final int sortGap;
 
     public CooperationDirectionTagServiceImpl(
             CooperationDirectionTagMapper cooperationDirectionTagMapper,
             AuditLogService auditLogService,
             OfficialProperties officialProperties,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            ApplicationEventPublisher eventPublisher) {
         this.cooperationDirectionTagMapper = cooperationDirectionTagMapper;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.eventPublisher = eventPublisher;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -90,6 +95,7 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
         log.info("create cooperation direction tag success id={} tagText={}", entity.getId(), entity.getTagText());
         recordAudit(ACTION_CREATE, entity.getId(), null, toSnapshot(entity));
         invalidatePortalCache();
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "lead", "CooperationDirectionTag", String.valueOf(entity.getId())));
     }
 
     @Override
@@ -108,6 +114,7 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
         log.info("update cooperation direction tag success id={} tagText={}", entity.getId(), entity.getTagText());
         recordAudit(ACTION_UPDATE, entity.getId(), before, toSnapshot(entity));
         invalidatePortalCache();
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "lead", "CooperationDirectionTag", String.valueOf(entity.getId())));
     }
 
     @Override
@@ -123,6 +130,7 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
         log.info("delete cooperation direction tag success id={}", entity.getId());
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
         invalidatePortalCache();
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "lead", "CooperationDirectionTag", String.valueOf(entity.getId())));
     }
 
     @Override
@@ -130,7 +138,7 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
     public void reorderCooperationDirectionTags(CooperationDirectionTagBatchSortRequestDTO requestDTO) {
         List<Long> requestedOrder = deduplicateIds(requestDTO.getOrderedCooperationDirectionTagIds());
         if (requestedOrder.isEmpty()) {
-            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, MSG_TAG_TEXT_REQUIRED);
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, MSG_ORDERED_ID_REQUIRED);
         }
 
         List<CooperationDirectionTagEntity> targetEntities = cooperationDirectionTagMapper.selectList(
@@ -143,7 +151,7 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
 
         List<CooperationDirectionTagEntity> activeTags = listActiveTags();
         if (activeTags.isEmpty()) {
-            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, MSG_TAG_TEXT_REQUIRED);
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, MSG_ORDERED_ID_REQUIRED);
         }
         Set<Long> currentIds = new LinkedHashSet<>(activeTags.stream()
                 .map(CooperationDirectionTagEntity::getId)
@@ -176,6 +184,7 @@ public class CooperationDirectionTagServiceImpl implements CooperationDirectionT
         log.info("reorder cooperation direction tags success count={} order={}", requestedOrder.size(), requestedOrder);
         recordAudit(ACTION_REORDER, 0L, before, after);
         invalidatePortalCache();
+        eventPublisher.publishEvent(EntityChangedEvent.of(this, "lead", "CooperationDirectionTag", "default"));
     }
 
     @Override

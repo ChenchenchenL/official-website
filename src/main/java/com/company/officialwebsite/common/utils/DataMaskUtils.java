@@ -40,6 +40,20 @@ public final class DataMaskUtils {
     }
 
     /**
+     * 预览 Token 脱敏：仅保留前 6 位字符，追加 "..."，禁止日志记录完整 Token。
+     * Token 为 null 或空时返回 "[null]"。
+     */
+    public static String maskPreviewToken(String token) {
+        if (!hasText(token)) {
+            return "[null]";
+        }
+        if (token.length() <= 6) {
+            return token + "...";
+        }
+        return token.substring(0, 6) + "...";
+    }
+
+    /**
      * 需求描述摘要：截取指定长度并追加省略号。
      */
     public static String previewText(String text, int maxLength) {

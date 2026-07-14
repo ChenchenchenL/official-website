@@ -100,7 +100,10 @@ public enum ErrorCode {
     PAGE_KEY_DUPLICATE(90002, "PAGE", "页面唯一Key标识已存在"),
     PAGE_ROUTE_DUPLICATE(90003, "PAGE", "页面路由路径已存在"),
     PAGE_DRAFT_NOT_FOUND(90004, "PAGE", "页面草稿不存在"),
-    PAGE_PREVIEW_TOKEN_EXPIRED(90005, "PAGE", "预览链接已失效或不存在"),
+    /** 预览 Token 不存在、已过期或已被撤销，统一返回此码，不区分具体原因，避免信息泄露。 */
+    PAGE_PREVIEW_TOKEN_EXPIRED(90005, "PAGE", "预览链接无效、已过期或已撤销"),
+    /** 生成预览时前端传入的 schemaHash 与服务端当前草稿哈希不一致，提示前端先保存。 */
+    PAGE_PREVIEW_SCHEMA_HASH_MISMATCH(90006, "PAGE", "草稿内容已变更，请先保存后再生成预览"),
 
     SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
 

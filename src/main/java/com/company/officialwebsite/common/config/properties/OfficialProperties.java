@@ -28,6 +28,8 @@ public class OfficialProperties {
 
     private final Storage storage = new Storage();
 
+    private final PageBuilder pageBuilder = new PageBuilder();
+
     public Cache getCache() {
         return cache;
     }
@@ -54,6 +56,10 @@ public class OfficialProperties {
 
     public Storage getStorage() {
         return storage;
+    }
+
+    public PageBuilder getPageBuilder() {
+        return pageBuilder;
     }
 
     /**
@@ -410,6 +416,38 @@ public class OfficialProperties {
 
         public void setPublicDomain(String publicDomain) {
             this.publicDomain = publicDomain;
+        }
+    }
+
+    /**
+     * PageBuilder 模块配置。
+     * previewUrlTemplate 用于拼接前端预览访问地址，{token} 占位符会被实际 Token 替换。
+     * 示例：http://localhost:5173/preview?token={token}
+     */
+    public static class PageBuilder {
+
+        /**
+         * 前端预览页面的 URL 模板，{token} 为预览 Token 占位符。
+         * 默认为空字符串，此时 previewUrl 响应字段仅返回相对路径形式。
+         */
+        private String previewUrlTemplate = "/preview?token={token}";
+
+        public String getPreviewUrlTemplate() {
+            return previewUrlTemplate;
+        }
+
+        public void setPreviewUrlTemplate(String previewUrlTemplate) {
+            this.previewUrlTemplate = previewUrlTemplate;
+        }
+
+        /**
+         * 将 previewUrlTemplate 中的 {token} 替换为实际 Token，生成完整预览地址。
+         */
+        public String buildPreviewUrl(String token) {
+            if (previewUrlTemplate == null || previewUrlTemplate.isBlank()) {
+                return "/preview?token=" + token;
+            }
+            return previewUrlTemplate.replace("{token}", token);
         }
     }
 }

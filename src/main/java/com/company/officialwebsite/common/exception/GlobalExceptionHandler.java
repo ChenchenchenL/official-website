@@ -133,6 +133,13 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.COMMON_DUPLICATE_DATA) {
             return HttpStatus.OK;
         }
+        // 预览 Token 无效/过期/撤销 → 401，避免泄露页面是否存在
+        if (errorCode == ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED) {
+            return HttpStatus.UNAUTHORIZED;
+        }
+        if (errorCode == ErrorCode.PAGE_PREVIEW_SCHEMA_HASH_MISMATCH) {
+            return HttpStatus.BAD_REQUEST;
+        }
         if (errorCode == ErrorCode.COMMON_RESOURCE_NOT_FOUND
                 || errorCode == ErrorCode.SITE_HONOR_NOT_FOUND
                 || errorCode == ErrorCode.SITE_CLIENT_LOGO_NOT_FOUND
@@ -151,8 +158,7 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.LEAD_COOPERATION_DIRECTION_TAG_NOT_FOUND
                 || errorCode == ErrorCode.LEAD_RECORD_NOT_FOUND
                 || errorCode == ErrorCode.PAGE_NOT_FOUND
-                || errorCode == ErrorCode.PAGE_DRAFT_NOT_FOUND
-                || errorCode == ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED) {
+                || errorCode == ErrorCode.PAGE_DRAFT_NOT_FOUND) {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.OK;

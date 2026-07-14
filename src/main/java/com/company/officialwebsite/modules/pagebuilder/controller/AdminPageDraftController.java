@@ -10,16 +10,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * AdminPageDraftController：后台页面草稿管理接口，提供草稿查询、保存与预览 Token 生成能力。
+ * AdminPageDraftController：后台页面草稿管理接口，提供草稿查询与保存能力。
  * <p>
  * 所有接口均需持有 {@code ADMINISTRATOR} 角色，业务逻辑委托给 {@link PageDraftService}。
+ * 预览 Token 相关操作已迁移至 {@link AdminPreviewController}。
  * </p>
  */
 @RestController
@@ -62,17 +62,5 @@ public class AdminPageDraftController {
         log.info("admin save page draft pageId={} version={}", pageId, dto.getVersion());
         return ApiResponse.success(pageDraftService.saveDraft(pageId, dto));
     }
-
-    /**
-     * 为指定页面的当前草稿生成预览 Token（有效期 10 分钟）。
-     *
-     * @param pageId 页面定义 ID
-     * @return 包含 UUID 格式预览 Token 的统一响应
-     */
-    @PostMapping("/{pageId}/preview-token")
-    @PreAuthorize("hasRole('ADMINISTRATOR')")
-    public ApiResponse<String> generatePreviewToken(@PathVariable Long pageId) {
-        log.info("admin generate preview token pageId={}", pageId);
-        return ApiResponse.success(pageDraftService.generatePreviewToken(pageId));
-    }
 }
+

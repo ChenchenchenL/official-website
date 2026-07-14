@@ -1,8 +1,6 @@
 package com.company.officialwebsite.modules.pagebuilder.controller;
 
 import com.company.officialwebsite.common.response.ApiResponse;
-import com.company.officialwebsite.modules.pagebuilder.service.PageDraftService;
-import com.company.officialwebsite.modules.pagebuilder.vo.PagePreviewVO;
 import com.company.officialwebsite.application.portal.PageRenderApplicationService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageMetaVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageVO;
@@ -15,7 +13,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * PortalPageController：前台页面预览、已发布页面渲染与元数据获取接口。
+ * PortalPageController：前台已发布页面渲染与元数据获取接口。
+ * <p>
+ * 注意：预览草稿功能已迁移至 {@link PortalPreviewController}（/portal/api/page-builder/previews/{token}），
+ * 旧的 GET /portal/api/page-builder/pages/preview 接口已废除，不再提供服务。
+ * </p>
  */
 @RestController
 @RequestMapping("/portal/api/page-builder/pages")
@@ -23,25 +25,10 @@ public class PortalPageController {
 
     private static final Logger log = LoggerFactory.getLogger(PortalPageController.class);
 
-    private final PageDraftService pageDraftService;
     private final PageRenderApplicationService pageRenderApplicationService;
 
-    public PortalPageController(PageDraftService pageDraftService, PageRenderApplicationService pageRenderApplicationService) {
-        this.pageDraftService = pageDraftService;
+    public PortalPageController(PageRenderApplicationService pageRenderApplicationService) {
         this.pageRenderApplicationService = pageRenderApplicationService;
-    }
-
-    /**
-     * 通过预览 Token 获取页面草稿的完整 Schema 快照，供前台渲染引擎消费。
-     *
-     * @param previewToken UUID 格式的预览令牌
-     * @return 包含 pageKey、name 及完整 Schema 的预览 VO
-     */
-    @GetMapping("/preview")
-    public ApiResponse<PagePreviewVO> getPagePreview(@RequestParam String previewToken) {
-        log.info("portal page preview request token={}", previewToken);
-        PagePreviewVO result = pageDraftService.getPreviewData(previewToken);
-        return ApiResponse.success(result);
     }
 
     /**
@@ -68,3 +55,4 @@ public class PortalPageController {
         return ApiResponse.success(pageRenderApplicationService.getPageMeta(pageKey));
     }
 }
+

@@ -23,4 +23,20 @@ public interface PageRenderApplicationService {
      * @return 页面元数据展示对象
      */
     PortalPageMetaVO getPageMeta(String pageKey);
+
+    /**
+     * 对草稿 Schema 执行与正式发布页面完全一致的数据绑定装配和可见性过滤，返回脱敏后的渲染模型。
+     * <p>
+     * 此方法为预览专用链路，有以下严格约束：
+     * <ul>
+     *   <li>禁止读取或写入任何 {@code official:portal:page:*} 正式缓存，预览链路完全无状态。</li>
+     *   <li>输出前所有区块的 {@code binding} 节点必须被清除，不得暴露绑定配置到前端。</li>
+     *   <li>不可见（visible=false）区块、隐藏或逻辑删除的绑定实体均不出现在输出中。</li>
+     * </ul>
+     *
+     * @param pageId 页面定义 ID，用于加载草稿
+     * @return 已完成绑定装配并清除 binding 元数据的渲染模型
+     * @throws com.company.officialwebsite.common.exception.BusinessException 草稿不存在时抛 PAGE_DRAFT_NOT_FOUND
+     */
+    PortalPageVO renderDraftForPreview(Long pageId);
 }

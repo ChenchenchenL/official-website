@@ -18,10 +18,15 @@ public final class PageBuilderConstants {
     public static final String PORTAL_PAGE_META_CACHE_PREFIX = "official:portal:page-meta:";
 
     /**
-     * 后台设计器预览草稿缓存前缀。
-     * 拼接格式：official:admin:page-preview:{pageId}
+     * 受控预览 Token Redis 缓存前缀。
+     * 拼接格式：official:admin:page-preview:{token}（token 为随机 UUID）
      */
     public static final String ADMIN_PAGE_PREVIEW_CACHE_PREFIX = "official:admin:page-preview:";
+
+    /**
+     * 受控预览 Token 在 Redis 中的有效期（1 小时）。
+     */
+    public static final long PREVIEW_TOKEN_TTL_HOURS = 1L;
 
     private PageBuilderConstants() {
         // 防止实例化

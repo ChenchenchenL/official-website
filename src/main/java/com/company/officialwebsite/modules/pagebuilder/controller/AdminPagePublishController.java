@@ -1,20 +1,26 @@
 package com.company.officialwebsite.modules.pagebuilder.controller;
 
 import com.company.officialwebsite.common.response.ApiResponse;
+import com.company.officialwebsite.infrastructure.security.AdminUserPrincipal;
 import com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO;
+import com.company.officialwebsite.modules.pagebuilder.dto.PageRollbackDTO;
 import com.company.officialwebsite.modules.pagebuilder.service.PagePublishService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageVersionVO;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -42,9 +48,12 @@ public class AdminPagePublishController {
     @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ApiResponse<PageVersionVO> publishPage(
             @PathVariable Long id,
-            @Valid @RequestBody PagePublishDTO dto) {
-        log.info("Admin request: publish page id={}", id);
-        return ApiResponse.success(pagePublishService.publishPage(id, dto));
+            @Valid @RequestBody PagePublishDTO dto,
+            @RequestHeader(value = "X-Editor-Lock-Token", required = false) String lockToken,
+            @AuthenticationPrincipal Object principal) {
+        String username = resolveUsername(principal);
+        log.info("Admin request: publish page id={} user={}", id, username);
+        return ApiResponse.success(pagePublishService.publishPage(id, dto, lockToken, username));
     }
 
     /**
@@ -54,9 +63,12 @@ public class AdminPagePublishController {
     @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ApiResponse<PageVersionVO> rollbackPage(
             @PathVariable Long id,
-            @RequestParam("versionId") Long versionId) {
-        log.info("Admin request: rollback page id={} to versionId={}", id, versionId);
-        return ApiResponse.success(pagePublishService.rollbackPage(id, versionId));
+            @Valid @RequestBody PageRollbackDTO dto,
+            @RequestHeader(value = "X-Editor-Lock-Token", required = false) String lockToken,
+            @AuthenticationPrincipal Object principal) {
+        String username = resolveUsername(principal);
+        log.info("Admin request: rollback page id={} to versionId={} user={}", id, dto.getVersionId(), username);
+        return ApiResponse.success(pagePublishService.rollbackPage(id, dto, lockToken, username));
     }
 
     /**
@@ -67,5 +79,19 @@ public class AdminPagePublishController {
     public ApiResponse<List<PageVersionVO>> getVersions(@PathVariable Long id) {
         log.info("Admin request: get versions list for page id={}", id);
         return ApiResponse.success(pagePublishService.listVersions(id));
+    }
+
+    private String resolveUsername(Object principal) {
+        if (principal instanceof AdminUserPrincipal adminUser) {
+            return adminUser.getUsername();
+        }
+        if (principal instanceof UserDetails userDetails) {
+            return userDetails.getUsername();
+        }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getName() != null) {
+            return auth.getName();
+        }
+        return "admin";
     }
 }

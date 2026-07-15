@@ -44,6 +44,12 @@ public class PageVersionEntity extends BaseEntity {
      */
     private String changeSummary;
 
+    /**
+     * 回滚来源版本ID：正常发布时为 null；回滚发布时记录所基于的历史版本 ID
+     */
+    @TableField("rollback_source_version_id")
+    private Long rollbackSourceVersionId;
+
     public Long getPageId() {
         return pageId;
     }
@@ -90,5 +96,13 @@ public class PageVersionEntity extends BaseEntity {
 
     public void setChangeSummary(String changeSummary) {
         this.changeSummary = changeSummary;
+    }
+
+    public Long getRollbackSourceVersionId() {
+        return rollbackSourceVersionId;
+    }
+
+    public void setRollbackSourceVersionId(Long rollbackSourceVersionId) {
+        this.rollbackSourceVersionId = rollbackSourceVersionId;
     }
 }

@@ -18,6 +18,7 @@ public class PageVersionVO {
     private String changeSummary;
     private Integer version;
     private LocalDateTime createdAt;
+    private Long rollbackSourceVersionId;
 
     public Long getId() {
         return id;
@@ -89,5 +90,13 @@ public class PageVersionVO {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Long getRollbackSourceVersionId() {
+        return rollbackSourceVersionId;
+    }
+
+    public void setRollbackSourceVersionId(Long rollbackSourceVersionId) {
+        this.rollbackSourceVersionId = rollbackSourceVersionId;
     }
 }

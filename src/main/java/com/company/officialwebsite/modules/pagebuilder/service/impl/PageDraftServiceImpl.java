@@ -9,6 +9,7 @@ import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
 import com.company.officialwebsite.modules.pagebuilder.entity.PageDraftEntity;
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageDraftMapper;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
+import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageDraftService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageSchemaValidationService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageDraftVO;
@@ -43,6 +44,7 @@ public class PageDraftServiceImpl implements PageDraftService {
     private final PageDraftMapper draftMapper;
     private final PageDraftConverter draftConverter;
     private final PageSchemaValidationService pageSchemaValidationService;
+    private final EditorLockService editorLockService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
 
@@ -50,11 +52,13 @@ public class PageDraftServiceImpl implements PageDraftService {
             PageDraftMapper draftMapper,
             PageDraftConverter draftConverter,
             PageSchemaValidationService pageSchemaValidationService,
+            EditorLockService editorLockService,
             AuditLogService auditLogService,
             ObjectMapper objectMapper) {
         this.draftMapper = draftMapper;
         this.draftConverter = draftConverter;
         this.pageSchemaValidationService = pageSchemaValidationService;
+        this.editorLockService = editorLockService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
     }
@@ -79,7 +83,12 @@ public class PageDraftServiceImpl implements PageDraftService {
      */
     @Override
     @Transactional
-    public PageDraftVO saveDraft(Long pageId, PageDraftSaveDTO dto) {
+    public PageDraftVO saveDraft(Long pageId, PageDraftSaveDTO dto, String lockToken, String operator) {
+        // 门禁：独占编辑锁校验
+        editorLockService.validateLock(
+                com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
+                pageId, lockToken, operator);
+
         PageDraftEntity draft = queryDraftByPageId(pageId);
         if (draft == null) {
             log.warn("saveDraft pageId={} draft not found", pageId);

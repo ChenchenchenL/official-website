@@ -24,15 +24,19 @@ import com.company.officialwebsite.modules.product.dto.ProductSortItemDTO;
 import com.company.officialwebsite.modules.product.dto.ProductUpdateDTO;
 import com.company.officialwebsite.modules.product.entity.IndustrySolutionEntity;
 import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.modules.product.entity.ProductVersionEntity;
 import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper;
 import com.company.officialwebsite.modules.product.mapper.ProductMapper;
+import com.company.officialwebsite.modules.product.mapper.ProductVersionMapper;
 import com.company.officialwebsite.modules.product.service.ProductService;
 import com.company.officialwebsite.modules.product.vo.PortalIndustrySolutionVO;
 import com.company.officialwebsite.modules.product.vo.PortalProductDetailVO;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import com.company.officialwebsite.modules.product.vo.ProductVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -74,6 +78,7 @@ public class ProductServiceImpl implements ProductService {
     private static final int RECOMMENDATION_LIMIT = 3;
 
     private final ProductMapper productMapper;
+    private final ProductVersionMapper productVersionMapper;
     private final ProductConverter productConverter;
     private final CaseMapper caseMapper;
     private final CaseConverter caseConverter;
@@ -85,10 +90,12 @@ public class ProductServiceImpl implements ProductService {
     private final PortalCacheSupport portalCacheSupport;
     private final ApplicationEventPublisher eventPublisher;
     private final ContentReferenceGuard contentReferenceGuard;
+    private final ObjectMapper objectMapper;
     private final int sortGap;
 
     public ProductServiceImpl(
             ProductMapper productMapper,
+            ProductVersionMapper productVersionMapper,
             ProductConverter productConverter,
             CaseMapper caseMapper,
             CaseConverter caseConverter,
@@ -100,8 +107,10 @@ public class ProductServiceImpl implements ProductService {
             OfficialProperties officialProperties,
             PortalCacheSupport portalCacheSupport,
             ApplicationEventPublisher eventPublisher,
-            ContentReferenceGuard contentReferenceGuard) {
+            ContentReferenceGuard contentReferenceGuard,
+            ObjectMapper objectMapper) {
         this.productMapper = productMapper;
+        this.productVersionMapper = productVersionMapper;
         this.productConverter = productConverter;
         this.caseMapper = caseMapper;
         this.caseConverter = caseConverter;
@@ -113,6 +122,7 @@ public class ProductServiceImpl implements ProductService {
         this.portalCacheSupport = portalCacheSupport;
         this.eventPublisher = eventPublisher;
         this.contentReferenceGuard = contentReferenceGuard;
+        this.objectMapper = objectMapper;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -359,10 +369,107 @@ public class ProductServiceImpl implements ProductService {
             log.warn("portal product detail not found productId={}", id);
             throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND);
         }
-        PortalProductDetailVO detail = productConverter.toPortalDetailVO(entity);
-        detail.setRelatedCases(listRelatedCases(entity.getId()));
-        detail.setRelatedIndustrySolutions(listRelatedIndustrySolutions(entity.getId()));
+        ProductVersionEntity publishedVersion = productVersionMapper.selectOne(
+                new LambdaQueryWrapper<ProductVersionEntity>()
+                        .eq(ProductVersionEntity::getProductId, id)
+                        .orderByDesc(ProductVersionEntity::getVersionNo)
+                        .last("LIMIT 1"));
+        if (publishedVersion == null || publishedVersion.getSnapshotJson() == null) {
+            log.warn("portal product detail has no published snapshot productId={}", id);
+            throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND);
+        }
+
+        JsonNode snapshot;
+        try {
+            snapshot = objectMapper.readTree(publishedVersion.getSnapshotJson());
+        } catch (Exception exception) {
+            log.error("portal product detail snapshot is invalid productId={} versionId={}", id, publishedVersion.getId(), exception);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "产品发布快照格式无效");
+        }
+        PortalProductDetailVO detail = toPortalDetailFromSnapshot(id, entity, publishedVersion, snapshot);
         return detail;
+    }
+
+    /**
+     * Portal 详情直接由产品发布快照组装，避免传统 CRUD 字段覆盖富文本、SEO 或关联配置。
+     */
+    private PortalProductDetailVO toPortalDetailFromSnapshot(
+            Long productId,
+            ProductEntity product,
+            ProductVersionEntity version,
+            JsonNode snapshot) {
+        PortalProductDetailVO detail = new PortalProductDetailVO();
+        detail.setId(productId);
+        detail.setTitle(snapshotText(snapshot, "title", "name"));
+        detail.setDescription(snapshotText(snapshot, "description", "abstractText", "summary"));
+        detail.setContent(snapshotText(snapshot, "content", "richText", "body"));
+        Long coverMediaId = snapshotLong(snapshot, "coverMediaId", "logoId");
+        detail.setCoverMediaId(coverMediaId);
+        detail.setCoverUrl(snapshotText(snapshot, "coverUrl", "logoUrl"));
+        JsonNode seo = snapshot.path("seo");
+        detail.setSeoTitle(snapshotText(seo, "title", "seoTitle", "name"));
+        detail.setSeoDescription(snapshotText(seo, "description", "seoDescription", "abstractText"));
+        detail.setVisible(true);
+        detail.setStatus("PUBLISHED");
+        detail.setUpdatedAt(version.getPublishedAt());
+        detail.setRelatedCases(listRelatedCasesByIds(snapshotIds(snapshot, "caseIds", "relatedCaseIds")));
+        detail.setRelatedIndustrySolutions(listRelatedIndustrySolutionsByIds(
+                snapshotIds(snapshot, "industrySolutionIds", "relatedIndustrySolutionIds")));
+        return detail;
+    }
+
+    private String snapshotText(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && value.isTextual()) {
+                return value.asText();
+            }
+        }
+        return "";
+    }
+
+    private Long snapshotLong(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && value.canConvertToLong()) {
+                return value.asLong();
+            }
+        }
+        return null;
+    }
+
+    private List<Long> snapshotIds(JsonNode snapshot, String... names) {
+        for (String name : names) {
+            JsonNode ids = snapshot.get(name);
+            if (ids != null && ids.isArray()) {
+                return java.util.stream.StreamSupport.stream(ids.spliterator(), false)
+                        .filter(JsonNode::canConvertToLong).map(JsonNode::asLong).toList();
+            }
+        }
+        return List.of();
+    }
+
+    private List<PortalCaseVO> listRelatedCasesByIds(List<Long> caseIds) {
+        if (caseIds.isEmpty()) {
+            return List.of();
+        }
+        return caseMapper.selectList(new LambdaQueryWrapper<CaseEntity>()
+                        .in(CaseEntity::getId, caseIds)
+                        .eq(CaseEntity::getDeletedMarker, 0L)
+                        .eq(CaseEntity::getVisible, 1)
+                        .eq(CaseEntity::getStatus, STATUS_PUBLISHED))
+                .stream().map(caseConverter::toPortalVO).toList();
+    }
+
+    private List<PortalIndustrySolutionVO> listRelatedIndustrySolutionsByIds(List<Long> solutionIds) {
+        if (solutionIds.isEmpty()) {
+            return List.of();
+        }
+        return industrySolutionMapper.selectList(new LambdaQueryWrapper<IndustrySolutionEntity>()
+                        .in(IndustrySolutionEntity::getId, solutionIds)
+                        .eq(IndustrySolutionEntity::getDeletedMarker, 0L)
+                        .eq(IndustrySolutionEntity::getVisible, 1))
+                .stream().map(industrySolutionConverter::toPortalVO).toList();
     }
 
     private List<PortalCaseVO> listRelatedCases(Long productId) {

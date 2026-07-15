@@ -58,9 +58,27 @@ public class AdminPageDraftController {
     @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ApiResponse<PageDraftVO> saveDraft(
             @PathVariable Long pageId,
-            @Valid @RequestBody PageDraftSaveDTO dto) {
-        log.info("admin save page draft pageId={} version={}", pageId, dto.getVersion());
-        return ApiResponse.success(pageDraftService.saveDraft(pageId, dto));
+            @Valid @RequestBody PageDraftSaveDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Editor-Lock-Token", required = false) String lockToken,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal Object principal) {
+        String username = resolveUsername(principal);
+        log.info("admin save page draft pageId={} version={} user={}", pageId, dto.getVersion(), username);
+        return ApiResponse.success(pageDraftService.saveDraft(pageId, dto, lockToken, username));
+    }
+
+    private String resolveUsername(Object principal) {
+        if (principal instanceof com.company.officialwebsite.infrastructure.security.AdminUserPrincipal adminUser) {
+            return adminUser.getUsername();
+        }
+        if (principal instanceof org.springframework.security.core.userdetails.UserDetails userDetails) {
+            return userDetails.getUsername();
+        }
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getName() != null) {
+            return auth.getName();
+        }
+        return "admin";
     }
 }
 

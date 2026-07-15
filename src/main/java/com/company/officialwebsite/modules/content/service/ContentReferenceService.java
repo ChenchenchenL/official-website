@@ -14,4 +14,10 @@ public interface ContentReferenceService {
     void updateContentReference(Long id, ContentReferenceUpdateRequestDTO requestDTO);
 
     void deleteContentReference(Long id, Integer version);
+
+    boolean hasActiveReferences(String referencedType, Long referencedId);
+
+    java.util.List<com.company.officialwebsite.modules.content.entity.ContentReferenceEntity> findReferencesByReferrer(String referrerType, String referrerKey);
+
+    void syncReferences(String referrerType, String referrerKey, java.util.List<com.company.officialwebsite.modules.content.entity.ContentReferenceEntity> newReferences);
 }

@@ -66,6 +66,20 @@ public final class DataMaskUtils {
         return text.substring(0, maxLength) + "...";
     }
 
+    /**
+     * 用户名/脱敏展示名脱敏：保留首字符 + ***。
+     */
+    public static String maskUsername(String name) {
+        if (!hasText(name)) {
+            return "***";
+        }
+        String trimmed = name.trim();
+        if (trimmed.length() <= 1) {
+            return trimmed + "***";
+        }
+        return trimmed.charAt(0) + "***" + (trimmed.length() > 2 ? trimmed.substring(trimmed.length() - 1) : "");
+    }
+
     private static boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
     }

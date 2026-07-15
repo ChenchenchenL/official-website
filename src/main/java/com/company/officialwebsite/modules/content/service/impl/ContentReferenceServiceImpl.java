@@ -176,6 +176,65 @@ public class ContentReferenceServiceImpl implements ContentReferenceService {
         recordAudit(ACTION_DELETE, entity.getId(), before, Map.of("deleted", true));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasActiveReferences(String referencedType, Long referencedId) {
+        if (!org.springframework.util.StringUtils.hasText(referencedType) || referencedId == null) {
+            return false;
+        }
+        Long count = contentReferenceMapper.selectCount(
+                new LambdaQueryWrapper<ContentReferenceEntity>()
+                        .eq(ContentReferenceEntity::getDeletedMarker, 0L)
+                        .eq(ContentReferenceEntity::getReferencedType, referencedType.trim().toUpperCase(Locale.ROOT))
+                        .eq(ContentReferenceEntity::getReferencedId, referencedId));
+        return count != null && count > 0;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ContentReferenceEntity> findReferencesByReferrer(String referrerType, String referrerKey) {
+        if (!org.springframework.util.StringUtils.hasText(referrerType) || !org.springframework.util.StringUtils.hasText(referrerKey)) {
+            return List.of();
+        }
+        return contentReferenceMapper.selectList(
+                new LambdaQueryWrapper<ContentReferenceEntity>()
+                        .eq(ContentReferenceEntity::getDeletedMarker, 0L)
+                        .eq(ContentReferenceEntity::getReferrerType, referrerType.trim().toUpperCase(Locale.ROOT))
+                        .eq(ContentReferenceEntity::getReferrerKey, referrerKey.trim()));
+    }
+
+    @Override
+    @Transactional
+    public void syncReferences(String referrerType, String referrerKey, List<ContentReferenceEntity> newReferences) {
+        String normalizedReferrerType = normalizeCode(referrerType, MSG_REFERRER_TYPE_REQUIRED);
+        String normalizedReferrerKey = normalizeText(referrerKey, MSG_REFERRER_KEY_REQUIRED);
+
+        // 删除旧活跃引用
+        contentReferenceMapper.delete(
+                new LambdaQueryWrapper<ContentReferenceEntity>()
+                        .eq(ContentReferenceEntity::getDeletedMarker, 0L)
+                        .eq(ContentReferenceEntity::getReferrerType, normalizedReferrerType)
+                        .eq(ContentReferenceEntity::getReferrerKey, normalizedReferrerKey));
+
+        if (newReferences == null || newReferences.isEmpty()) {
+            return;
+        }
+
+        for (ContentReferenceEntity ref : newReferences) {
+            ref.setId(null);
+            ref.setReferrerType(normalizedReferrerType);
+            ref.setReferrerKey(normalizedReferrerKey);
+            ref.setVersion(0);
+            validateReferencedContent(ref);
+            try {
+                contentReferenceMapper.insert(ref);
+            } catch (DuplicateKeyException ex) {
+                log.warn("syncReferences duplicate referrerType={} referrerKey={} referencedType={} referencedId={}",
+                        normalizedReferrerType, normalizedReferrerKey, ref.getReferencedType(), ref.getReferencedId());
+            }
+        }
+    }
+
     private ContentReferenceEntity requireActiveReference(Long id) {
         ContentReferenceEntity entity = contentReferenceMapper.selectOne(
                 new LambdaQueryWrapper<ContentReferenceEntity>()

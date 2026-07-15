@@ -31,6 +31,7 @@ public class PageVersionConverter {
         vo.setChangeSummary(entity.getChangeSummary());
         vo.setVersion(entity.getVersion());
         vo.setCreatedAt(entity.getCreatedAt());
+        vo.setRollbackSourceVersionId(entity.getRollbackSourceVersionId());
         return vo;
     }
 

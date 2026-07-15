@@ -5,9 +5,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
-import com.company.officialwebsite.modules.pagebuilder.constants.PageBuilderConstants;
 import com.company.officialwebsite.modules.pagebuilder.converter.PageVersionConverter;
+import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO;
+import com.company.officialwebsite.modules.pagebuilder.dto.PageRollbackDTO;
 import com.company.officialwebsite.modules.pagebuilder.entity.PageDefinitionEntity;
 import com.company.officialwebsite.modules.pagebuilder.entity.PageDependencyEntity;
 import com.company.officialwebsite.modules.pagebuilder.entity.PageDraftEntity;
@@ -20,10 +21,12 @@ import com.company.officialwebsite.modules.pagebuilder.mapper.PageDependencyMapp
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageDraftMapper;
 import com.company.officialwebsite.modules.pagebuilder.mapper.PagePublishSnapshotMapper;
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageVersionMapper;
+import com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService;
 import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
 import com.company.officialwebsite.modules.pagebuilder.service.ComponentTemplateService;
+import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.modules.pagebuilder.service.PagePublishService;
 import com.company.officialwebsite.modules.pagebuilder.vo.ComponentTemplateVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageVersionVO;
@@ -59,8 +62,10 @@ public class PagePublishServiceImpl implements PagePublishService {
     private final PageDependencyMapper pageDependencyMapper;
     private final ComponentTemplateService componentTemplateService;
     private final PageVersionConverter pageVersionConverter;
+    private final EditorLockService editorLockService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final PageCacheInvalidationService pageCacheInvalidationService;
 
     public PagePublishServiceImpl(
             PageDefinitionMapper pageDefinitionMapper,
@@ -70,8 +75,10 @@ public class PagePublishServiceImpl implements PagePublishService {
             PageDependencyMapper pageDependencyMapper,
             ComponentTemplateService componentTemplateService,
             PageVersionConverter pageVersionConverter,
+            EditorLockService editorLockService,
             AuditLogService auditLogService,
-            PortalCacheSupport portalCacheSupport) {
+            PortalCacheSupport portalCacheSupport,
+            PageCacheInvalidationService pageCacheInvalidationService) {
         this.pageDefinitionMapper = pageDefinitionMapper;
         this.pageDraftMapper = pageDraftMapper;
         this.pageVersionMapper = pageVersionMapper;
@@ -79,13 +86,20 @@ public class PagePublishServiceImpl implements PagePublishService {
         this.pageDependencyMapper = pageDependencyMapper;
         this.componentTemplateService = componentTemplateService;
         this.pageVersionConverter = pageVersionConverter;
+        this.editorLockService = editorLockService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.pageCacheInvalidationService = pageCacheInvalidationService;
     }
 
     @Override
     @Transactional
-    public PageVersionVO publishPage(Long pageId, PagePublishDTO dto) {
+    public PageVersionVO publishPage(Long pageId, PagePublishDTO dto, String lockToken, String operator) {
+        // 门禁：独占编辑锁校验
+        editorLockService.validateLock(
+                com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
+                pageId, lockToken, operator);
+
         PageDefinitionEntity page = requireActivePage(pageId);
 
         PageDraftEntity draft = pageDraftMapper.selectOne(
@@ -95,6 +109,9 @@ public class PagePublishServiceImpl implements PagePublishService {
             log.warn("publishPage failed: pageId={} draft or schema is null", pageId);
             throw new BusinessException(ErrorCode.PAGE_DRAFT_NOT_FOUND);
         }
+
+        // 草稿乐观锁版本校验，防止并发覆盖
+        ConcurrencyHelper.assertVersion(draft.getVersion(), dto.getVersion());
 
         // 1. 计算版本序号
         int nextVerNo = getNextVersionNo(pageId);
@@ -140,7 +157,7 @@ public class PagePublishServiceImpl implements PagePublishService {
         );
 
         // 7. 失效缓存
-        invalidateCache(page.getPageKey(), page.getRoutePath());
+        invalidateCacheWithDependencies(pageId);
 
         log.info("Successfully published page: pageId={}, versionNo={}", pageId, nextVerNo);
         return pageVersionConverter.toVO(version);
@@ -148,13 +165,26 @@ public class PagePublishServiceImpl implements PagePublishService {
 
     @Override
     @Transactional
-    public PageVersionVO rollbackPage(Long pageId, Long versionId) {
+    public PageVersionVO rollbackPage(Long pageId, PageRollbackDTO dto, String lockToken, String operator) {
+        // 门禁：独占编辑锁校验
+        editorLockService.validateLock(
+                com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
+                pageId, lockToken, operator);
+
         PageDefinitionEntity page = requireActivePage(pageId);
 
-        PageVersionEntity targetVersion = pageVersionMapper.selectById(versionId);
+        PageVersionEntity targetVersion = pageVersionMapper.selectById(dto.getVersionId());
         if (targetVersion == null || !targetVersion.getPageId().equals(pageId)) {
             log.warn("rollbackPage failed: target version not found or pageId mismatch");
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "指定的历史版本不存在");
+        }
+
+        // 草稿乐观锁版本校验，防止并发覆盖
+        PageDraftEntity draft = pageDraftMapper.selectOne(
+                new LambdaQueryWrapper<PageDraftEntity>().eq(PageDraftEntity::getPageId, pageId)
+        );
+        if (draft != null) {
+            ConcurrencyHelper.assertVersion(draft.getVersion(), dto.getVersion());
         }
 
         // 1. 计算版本序号
@@ -167,7 +197,8 @@ public class PagePublishServiceImpl implements PagePublishService {
         rollbackVersion.setSourceType(PageVersionSourceTypeEnum.ROLLBACK_BASE.name());
         rollbackVersion.setSchemaJson(targetVersion.getSchemaJson());
         rollbackVersion.setSchemaHash(targetVersion.getSchemaHash());
-        rollbackVersion.setChangeSummary("回滚至版本 No." + targetVersion.getVersionNo() + " (变更说明: " + targetVersion.getChangeSummary() + ")");
+        rollbackVersion.setChangeSummary(dto.getChangeSummary().trim());
+        rollbackVersion.setRollbackSourceVersionId(dto.getVersionId());
         pageVersionMapper.insert(rollbackVersion);
 
         // 3. 将原有的 ACTIVE 快照更新为 SUPERSEDED
@@ -188,9 +219,6 @@ public class PagePublishServiceImpl implements PagePublishService {
         pagePublishSnapshotMapper.insert(snapshot);
 
         // 5. 同步覆盖草稿配置
-        PageDraftEntity draft = pageDraftMapper.selectOne(
-                new LambdaQueryWrapper<PageDraftEntity>().eq(PageDraftEntity::getPageId, pageId)
-        );
         if (draft != null) {
             draft.setSchemaJson(targetVersion.getSchemaJson());
             draft.setSchemaHash(targetVersion.getSchemaHash());
@@ -209,15 +237,17 @@ public class PagePublishServiceImpl implements PagePublishService {
         snapshotLog.put("pageId", pageId);
         snapshotLog.put("pageKey", page.getPageKey());
         snapshotLog.put("rollbackToVersionNo", targetVersion.getVersionNo());
+        snapshotLog.put("rollbackSourceVersionId", dto.getVersionId());
         snapshotLog.put("newVersionNo", nextVerNo);
+        snapshotLog.put("changeSummary", dto.getChangeSummary());
         auditLogService.recordGenericOperation(
                 BIZ_MODULE, ACTION_ROLLBACK, TARGET_TYPE, snapshot.getId(), null, snapshotLog
         );
 
         // 8. 失效缓存
-        invalidateCache(page.getPageKey(), page.getRoutePath());
+        invalidateCacheWithDependencies(pageId);
 
-        log.info("Successfully rolled back page: pageId={}, newVersionNo={}", pageId, nextVerNo);
+        log.info("Successfully rolled back page: pageId={}, newVersionNo={}, sourceVersionId={}", pageId, nextVerNo, dto.getVersionId());
         return pageVersionConverter.toVO(rollbackVersion);
     }
 
@@ -387,9 +417,32 @@ public class PagePublishServiceImpl implements PagePublishService {
         }
     }
 
-    private void invalidateCache(String pageKey, String routePath) {
-        String pageKeyCache = PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + routePath;
-        String metaKeyCache = PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + pageKey;
-        portalCacheSupport.invalidate(pageKeyCache, metaKeyCache);
+    /**
+     * 发布或回滚后同时失效当前页面、引用相同目标的关联页面，以及当前页面依赖模块的列表缓存。
+     */
+    private void invalidateCacheWithDependencies(Long pageId) {
+        pageCacheInvalidationService.invalidatePageAndRelatedCaches(pageId);
+
+        // 当前页面绑定的实体模块对应的 Portal 列表缓存
+        List<String> modules = pageDependencyMapper.selectDistinctModulesByPageId(pageId);
+        List<String> moduleCacheKeys = (modules == null ? List.<String>of() : modules).stream()
+                .map(this::resolveModulePortalCacheKey)
+                .filter(k -> k != null)
+                .distinct()
+                .toList();
+
+        if (!moduleCacheKeys.isEmpty()) {
+            portalCacheSupport.invalidate(moduleCacheKeys.toArray(new String[0]));
+        }
+    }
+
+    private String resolveModulePortalCacheKey(String module) {
+        return switch (module) {
+            case "product" -> "official:portal:products";
+            case "casecenter" -> "official:portal:cases";
+            case "site" -> "official:portal:site-config";
+            case "lead" -> null; // lead 无 Portal 公开列表
+            default -> null;
+        };
     }
 }

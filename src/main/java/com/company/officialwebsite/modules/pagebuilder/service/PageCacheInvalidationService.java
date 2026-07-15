@@ -14,4 +14,11 @@ public interface PageCacheInvalidationService {
      * @param entityId   实体主键（字符串形式）
      */
     void invalidateCacheByTarget(String module, String entityType, String entityId);
+
+    /**
+     * 失效指定页面及其关联页面的渲染和 SEO 缓存。
+     *
+     * @param pageId 已发布或回滚的页面 ID
+     */
+    void invalidatePageAndRelatedCaches(Long pageId);
 }

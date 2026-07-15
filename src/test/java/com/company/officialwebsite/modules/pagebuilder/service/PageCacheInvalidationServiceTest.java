@@ -2,6 +2,7 @@ package com.company.officialwebsite.modules.pagebuilder.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -128,6 +129,44 @@ class PageCacheInvalidationServiceTest {
         String[] actualKeys = keysCaptor.getValue();
         // 3 pages × 2 keys each = 6 keys
         org.junit.jupiter.api.Assertions.assertEquals(6, actualKeys.length);
+    }
+
+    /**
+     * 页面发布或回滚时，应查询关联页面并一次性失效当前页及关联页的渲染、SEO 缓存。
+     */
+    @Test
+    void invalidatePageAndRelatedCaches_shouldInvalidateCurrentAndRelatedPageKeys() {
+        when(pageDependencyMapper.selectRelatedPageIds(10L)).thenReturn(List.of(20L, 30L));
+
+        PageRouteProjection current = new PageRouteProjection();
+        current.setId(10L);
+        current.setPageKey("home-page");
+        current.setRoutePath("/");
+        PageRouteProjection relatedOne = new PageRouteProjection();
+        relatedOne.setId(20L);
+        relatedOne.setPageKey("product-page");
+        relatedOne.setRoutePath("/products");
+        PageRouteProjection relatedTwo = new PageRouteProjection();
+        relatedTwo.setId(30L);
+        relatedTwo.setPageKey("case-page");
+        relatedTwo.setRoutePath("/cases");
+        when(pageDefinitionMapper.selectRoutesByPageIds(any()))
+                .thenReturn(List.of(current, relatedOne, relatedTwo));
+
+        service.invalidatePageAndRelatedCaches(10L);
+
+        verify(pageDefinitionMapper).selectRoutesByPageIds(argThat(pageIds ->
+                pageIds.size() == 3 && pageIds.containsAll(List.of(10L, 20L, 30L))));
+        ArgumentCaptor<String[]> keysCaptor = ArgumentCaptor.forClass(String[].class);
+        verify(portalCacheSupport).invalidate(keysCaptor.capture());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{
+                PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/",
+                PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "home-page",
+                PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/products",
+                PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "product-page",
+                PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/cases",
+                PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "case-page"
+        }, keysCaptor.getValue());
     }
 
     /**

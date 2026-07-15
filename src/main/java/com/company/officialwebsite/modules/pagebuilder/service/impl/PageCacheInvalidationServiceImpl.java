@@ -7,7 +7,10 @@ import com.company.officialwebsite.modules.pagebuilder.mapper.PageDefinitionMapp
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageDependencyMapper;
 import com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,23 +53,43 @@ public class PageCacheInvalidationServiceImpl implements PageCacheInvalidationSe
             return;
         }
 
-        // 2. 查询页面的 pageKey 和 routePath
+        invalidatePageCaches(pageIds, "module=" + module + " entityType=" + entityType + " entityId=" + entityId);
+    }
+
+    @Override
+    public void invalidatePageAndRelatedCaches(Long pageId) {
+        Set<Long> affectedPageIds = new LinkedHashSet<>();
+        affectedPageIds.add(pageId);
+
+        List<Long> relatedPageIds = pageDependencyMapper.selectRelatedPageIds(pageId);
+        if (relatedPageIds != null) {
+            affectedPageIds.addAll(relatedPageIds);
+        }
+
+        invalidatePageCaches(affectedPageIds, "publishedOrRolledBackPageId=" + pageId);
+    }
+
+    /**
+     * 将页面 ID 批量转换为渲染与 SEO 缓存 Key，并交由统一缓存支撑在事务提交后失效。
+     */
+    private void invalidatePageCaches(Collection<Long> pageIds, String reason) {
+        // 查询页面的 pageKey 和 routePath
         List<PageRouteProjection> routes = pageDefinitionMapper.selectRoutesByPageIds(pageIds);
         if (routes == null || routes.isEmpty()) {
             log.warn("[PageCacheInvalidation] pageIds found but no route projections, pageIds={}", pageIds);
             return;
         }
 
-        // 3. 组装需要失效的缓存 key
+        // 组装需要失效的缓存 key
         List<String> keys = new ArrayList<>(routes.size() * 2);
         for (PageRouteProjection route : routes) {
             keys.add(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + route.getRoutePath());
             keys.add(PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + route.getPageKey());
         }
 
-        // 4. 触发事务后失效（含延迟二次删除）
+        // 触发事务后失效（含延迟二次删除）
         portalCacheSupport.invalidate(keys.toArray(new String[0]));
-        log.info("[PageCacheInvalidation] invalidated {} page cache(s) for module={} entityType={} entityId={} pageIds={}",
-                routes.size(), module, entityType, entityId, pageIds);
+        log.info("[PageCacheInvalidation] invalidated {} page cache(s), reason={}, pageIds={}",
+                routes.size(), reason, pageIds);
     }
 }

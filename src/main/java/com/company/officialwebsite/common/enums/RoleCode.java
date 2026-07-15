@@ -8,7 +8,9 @@ import java.util.Arrays;
  */
 public enum RoleCode {
 
-    ADMINISTRATOR("ADMINISTRATOR", "管理员");
+    ADMINISTRATOR("ADMINISTRATOR", "管理员"),
+    /** 超级管理员：在普通管理员权限基础上，额外拥有强制解锁他人编辑锁的能力。 */
+    SUPER_ADMINISTRATOR("SUPER_ADMINISTRATOR", "超级管理员");
 
     private final String code;
     private final String description;

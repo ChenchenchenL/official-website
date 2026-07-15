@@ -28,6 +28,6 @@ public interface PageDraftService {
      * @return 更新后的草稿 VO
      * @throws com.company.officialwebsite.common.exception.BusinessException 草稿不存在或版本冲突时抛出对应错误码
      */
-    PageDraftVO saveDraft(Long pageId, PageDraftSaveDTO dto);
+    PageDraftVO saveDraft(Long pageId, PageDraftSaveDTO dto, String lockToken, String operator);
 }
 

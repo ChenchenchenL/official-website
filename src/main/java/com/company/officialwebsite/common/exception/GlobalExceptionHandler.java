@@ -61,6 +61,24 @@ public class GlobalExceptionHandler {
                 ErrorCode.COMMON_PARAM_INVALID.getDefaultMessage()));
     }
 
+    @ExceptionHandler(org.springframework.security.authorization.AuthorizationDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthorizationDenied(Exception ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(ErrorCode.AUTH_UNAUTHORIZED, ErrorCode.AUTH_UNAUTHORIZED.getDefaultMessage()));
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(Exception ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ErrorCode.AUTH_FORBIDDEN, ErrorCode.AUTH_FORBIDDEN.getDefaultMessage()));
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthenticationException(Exception ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(ErrorCode.AUTH_UNAUTHORIZED, ErrorCode.AUTH_UNAUTHORIZED.getDefaultMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception ex) {
         log.error("Unhandled system exception", ex);
@@ -79,15 +97,29 @@ public class GlobalExceptionHandler {
     }
 
     private HttpStatus resolveHttpStatus(ErrorCode errorCode) {
-        if (errorCode == ErrorCode.AUTH_UNAUTHORIZED || errorCode == ErrorCode.AUTH_LOGIN_FAILED) {
+        if (errorCode == ErrorCode.AUTH_UNAUTHORIZED
+                || errorCode == ErrorCode.AUTH_LOGIN_FAILED
+                || errorCode == ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED
+                || errorCode == ErrorCode.DETAIL_PREVIEW_TOKEN_EXPIRED) {
             return HttpStatus.UNAUTHORIZED;
         }
         if (errorCode == ErrorCode.AUTH_FORBIDDEN
                 || errorCode == ErrorCode.AUTH_ACCOUNT_DISABLED
-                || errorCode == ErrorCode.AUTH_CSRF_INVALID) {
+                || errorCode == ErrorCode.AUTH_CSRF_INVALID
+                || errorCode == ErrorCode.EDITOR_LOCK_OWNER_MISMATCH
+                || errorCode == ErrorCode.EDITOR_LOCK_FORCE_RELEASE_DENIED) {
             return HttpStatus.FORBIDDEN;
         }
-        if (errorCode == ErrorCode.COMMON_PARAM_INVALID
+        if (errorCode == ErrorCode.EDITOR_LOCK_CONFLICT
+                || errorCode == ErrorCode.EDITOR_LOCK_EXPIRED
+                || errorCode == ErrorCode.RESOURCE_REFERENCE_CONFLICT
+                || errorCode == ErrorCode.DETAIL_VERSION_CONFLICT
+                || errorCode == ErrorCode.COMMON_STATE_CONFLICT) {
+            return HttpStatus.CONFLICT;
+        }
+        if (errorCode == ErrorCode.EDITOR_LOCK_TOKEN_REQUIRED
+                || errorCode == ErrorCode.DETAIL_PUBLISH_VALIDATION_FAILED
+                || errorCode == ErrorCode.COMMON_PARAM_INVALID
                 || errorCode == ErrorCode.MEDIA_FILE_INVALID
                 || errorCode == ErrorCode.SITE_LOGO_MEDIA_INVALID
                 || errorCode == ErrorCode.SITE_NAVIGATION_TARGET_INVALID
@@ -117,7 +149,8 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.MEDIA_UPLOAD_FAILED
                 || errorCode == ErrorCode.MEDIA_STORAGE_WRITE_FAILED
                 || errorCode == ErrorCode.PAGE_KEY_DUPLICATE
-                || errorCode == ErrorCode.PAGE_ROUTE_DUPLICATE) {
+                || errorCode == ErrorCode.PAGE_ROUTE_DUPLICATE
+                || errorCode == ErrorCode.PAGE_PREVIEW_SCHEMA_HASH_MISMATCH) {
             return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.SITE_NAVIGATION_NAME_DUPLICATE
@@ -132,13 +165,6 @@ public class GlobalExceptionHandler {
                 || errorCode == ErrorCode.SITE_CAPABILITY_ITEM_NAME_DUPLICATE
                 || errorCode == ErrorCode.COMMON_DUPLICATE_DATA) {
             return HttpStatus.OK;
-        }
-        // 预览 Token 无效/过期/撤销 → 401，避免泄露页面是否存在
-        if (errorCode == ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED) {
-            return HttpStatus.UNAUTHORIZED;
-        }
-        if (errorCode == ErrorCode.PAGE_PREVIEW_SCHEMA_HASH_MISMATCH) {
-            return HttpStatus.BAD_REQUEST;
         }
         if (errorCode == ErrorCode.COMMON_RESOURCE_NOT_FOUND
                 || errorCode == ErrorCode.SITE_HONOR_NOT_FOUND

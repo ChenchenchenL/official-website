@@ -15,12 +15,20 @@ public enum ErrorCode {
     COMMON_STATE_CONFLICT(10003, "COMMON", "当前状态不允许执行该操作"),
     COMMON_DUPLICATE_DATA(10004, "COMMON", "数据已存在"),
     COMMON_REQUEST_TOO_FREQUENT(10005, "COMMON", "请求过于频繁"),
+    EDITOR_LOCK_CONFLICT(10006, "COMMON", "该资源正在被其他管理员编辑"),
+    EDITOR_LOCK_EXPIRED(10008, "COMMON", "编辑锁已过期，请重新获取锁"),
+    EDITOR_LOCK_OWNER_MISMATCH(10009, "COMMON", "编辑锁凭证不符或已被抢占"),
+    RESOURCE_REFERENCE_CONFLICT(10010, "COMMON", "被引用资源存在依赖冲突，无法执行下线或删除操作"),
+    EDITOR_LOCK_TOKEN_REQUIRED(10011, "COMMON", "缺少 Header X-Editor-Lock-Token"),
+    DETAIL_VERSION_CONFLICT(10012, "COMMON", "版本已被其他管理员修改，请刷新重试"),
+    DETAIL_PUBLISH_VALIDATION_FAILED(10013, "COMMON", "发布校验未通过，请检查内容合法性"),
 
     AUTH_UNAUTHORIZED(20001, "AUTH", "请先登录"),
     AUTH_FORBIDDEN(20002, "AUTH", "无权执行该操作"),
     AUTH_LOGIN_FAILED(20003, "AUTH", "用户名或密码错误"),
-    AUTH_ACCOUNT_DISABLED(20004, "AUTH", "账号已被禁用"),
-    AUTH_CSRF_INVALID(20005, "AUTH", "请求校验失败，请刷新页面后重试"),
+    EDITOR_LOCK_FORCE_RELEASE_DENIED(20004, "SECURITY", "无权强制解锁该资源"),
+    AUTH_ACCOUNT_DISABLED(20005, "AUTH", "账号已被禁用"),
+    AUTH_CSRF_INVALID(20006, "AUTH", "请求校验失败，请刷新页面后重试"),
 
     SITE_LOGO_MEDIA_INVALID(30001, "SITE", "站点 Logo 资源不可用"),
     SITE_NAVIGATION_TARGET_INVALID(30002, "SITE", "导航目标配置不合法"),
@@ -104,6 +112,7 @@ public enum ErrorCode {
     PAGE_PREVIEW_TOKEN_EXPIRED(90005, "PAGE", "预览链接无效、已过期或已撤销"),
     /** 生成预览时前端传入的 schemaHash 与服务端当前草稿哈希不一致，提示前端先保存。 */
     PAGE_PREVIEW_SCHEMA_HASH_MISMATCH(90006, "PAGE", "草稿内容已变更，请先保存后再生成预览"),
+    DETAIL_PREVIEW_TOKEN_EXPIRED(90007, "COMMON", "详情预览链接无效、已过期或已撤销"),
 
     SYSTEM_ERROR(80000, "SYSTEM", "系统繁忙，请稍后再试");
 

@@ -25,6 +25,7 @@ import com.company.officialwebsite.modules.product.converter.IndustrySolutionCon
 import com.company.officialwebsite.modules.product.dto.IndustrySolutionCreateDTO;
 import com.company.officialwebsite.modules.product.entity.IndustrySolutionEntity;
 import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper;
+import com.company.officialwebsite.modules.product.mapper.IndustrySolutionVersionMapper;
 import com.company.officialwebsite.modules.product.vo.AdminIndustrySolutionVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +46,9 @@ class IndustrySolutionServiceImplTest {
 
     @Mock
     private IndustrySolutionMapper industrySolutionMapper;
+
+    @Mock
+    private IndustrySolutionVersionMapper industrySolutionVersionMapper;
 
     @Mock
     private MediaAssetService mediaAssetService;
@@ -80,6 +84,7 @@ class IndustrySolutionServiceImplTest {
         officialProperties.getCache().setDefaultTtl(Duration.ofMinutes(10));
         service = new IndustrySolutionServiceImpl(
                 industrySolutionMapper,
+                industrySolutionVersionMapper,
                 industrySolutionConverter,
                 mediaAssetService,
                 auditLogService,

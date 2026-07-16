@@ -18,7 +18,9 @@ import com.company.officialwebsite.modules.product.dto.IndustrySolutionCreateDTO
 import com.company.officialwebsite.modules.product.dto.IndustrySolutionDeleteDTO;
 import com.company.officialwebsite.modules.product.dto.IndustrySolutionUpdateDTO;
 import com.company.officialwebsite.modules.product.entity.IndustrySolutionEntity;
+import com.company.officialwebsite.modules.product.entity.IndustrySolutionVersionEntity;
 import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper;
+import com.company.officialwebsite.modules.product.mapper.IndustrySolutionVersionMapper;
 import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.product.service.IndustrySolutionService;
 import com.company.officialwebsite.modules.product.vo.AdminIndustrySolutionVO;
@@ -57,6 +59,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
     private static final String ACTION_REORDER = "REORDER_SOLUTION";
 
     private final IndustrySolutionMapper industrySolutionMapper;
+    private final IndustrySolutionVersionMapper industrySolutionVersionMapper;
     private final IndustrySolutionConverter industrySolutionConverter;
     private final MediaAssetService mediaAssetService;
     private final AuditLogService auditLogService;
@@ -67,6 +70,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
 
     public IndustrySolutionServiceImpl(
             IndustrySolutionMapper industrySolutionMapper,
+            IndustrySolutionVersionMapper industrySolutionVersionMapper,
             IndustrySolutionConverter industrySolutionConverter,
             MediaAssetService mediaAssetService,
             AuditLogService auditLogService,
@@ -75,6 +79,7 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
             ApplicationEventPublisher eventPublisher,
             ContentReferenceGuard contentReferenceGuard) {
         this.industrySolutionMapper = industrySolutionMapper;
+        this.industrySolutionVersionMapper = industrySolutionVersionMapper;
         this.industrySolutionConverter = industrySolutionConverter;
         this.mediaAssetService = mediaAssetService;
         this.auditLogService = auditLogService;
@@ -254,7 +259,10 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
                         .eq(IndustrySolutionEntity::getVisible, true)
                         .orderByAsc(IndustrySolutionEntity::getSortOrder)
                         .orderByAsc(IndustrySolutionEntity::getId));
-        List<PortalIndustrySolutionVO> result = list.stream().map(industrySolutionConverter::toPortalVO).toList();
+        List<PortalIndustrySolutionVO> result = list.stream()
+                .filter(this::hasPublishedSnapshot)
+                .map(industrySolutionConverter::toPortalVO)
+                .toList();
 
         portalCacheSupport.writeCache(cacheKey, result, portalCacheSupport.isEmptyResult(result), CACHE_SEGMENT);
         return result;
@@ -267,6 +275,13 @@ public class IndustrySolutionServiceImpl implements IndustrySolutionService {
                         .orderByAsc(IndustrySolutionEntity::getSortOrder)
                         .orderByAsc(IndustrySolutionEntity::getId));
         return list.stream().map(industrySolutionConverter::toAdminVO).toList();
+    }
+
+    /** Portal 列表仅公开存在正式发布快照的可见行业方案，旧 CRUD 不得绕过发布流程。 */
+    private boolean hasPublishedSnapshot(IndustrySolutionEntity solution) {
+        return industrySolutionVersionMapper.exists(
+                new LambdaQueryWrapper<IndustrySolutionVersionEntity>()
+                        .eq(IndustrySolutionVersionEntity::getSolutionId, solution.getId()));
     }
 
     private IndustrySolutionEntity requireActiveIndustrySolution(Long id) {

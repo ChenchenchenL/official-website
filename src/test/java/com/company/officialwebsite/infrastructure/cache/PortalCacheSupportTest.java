@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -114,6 +115,23 @@ class PortalCacheSupportTest {
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }
+    }
+
+    @Test
+    void portalCacheInvalidationSupport_shouldPersistRetryTask_whenRedisDeleteFails() {
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        RecordingTaskScheduler taskScheduler = new RecordingTaskScheduler();
+        PortalCacheInvalidationRetryService retryService = mock(PortalCacheInvalidationRetryService.class);
+        OfficialProperties officialProperties = new OfficialProperties();
+        PortalCacheInvalidationSupport support = new PortalCacheInvalidationSupport(
+                redisTemplate, taskScheduler, new PortalCacheKeyBuilder("official"), officialProperties, retryService);
+        List<String> keys = List.of("official:portal:products");
+        doThrow(new IllegalStateException("redis unavailable")).when(redisTemplate).delete(keys);
+
+        support.invalidate(keys);
+
+        verify(retryService).enqueue(eq(keys), any(IllegalStateException.class));
+        assertThat(taskScheduler.scheduledTasks).hasSize(1);
     }
 
     @Test

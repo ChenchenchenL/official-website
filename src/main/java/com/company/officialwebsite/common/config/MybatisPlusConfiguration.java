@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
  * MybatisPlusConfiguration：统一配置 Mapper 扫描、分页、乐观锁和危险 SQL 防护。
  */
 @Configuration
-@MapperScan(basePackages = "com.company.officialwebsite.modules", markerInterface = BaseMapper.class)
+@MapperScan(basePackages = "com.company.officialwebsite", markerInterface = BaseMapper.class)
 public class MybatisPlusConfiguration {
 
     /**

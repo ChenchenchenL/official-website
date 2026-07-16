@@ -22,6 +22,7 @@ import com.company.officialwebsite.modules.casecenter.converter.CaseConverter;
 import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
 import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
 import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
+import com.company.officialwebsite.modules.casecenter.mapper.CaseVersionMapper;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
 import com.company.officialwebsite.modules.content.mapper.ContentRelationMapper;
 import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
@@ -48,6 +49,9 @@ class CaseServiceImplTest {
 
     @Mock
     private CaseMapper caseMapper;
+
+    @Mock
+    private CaseVersionMapper caseVersionMapper;
 
     @Mock
     private CaseConverter caseConverter;
@@ -88,8 +92,10 @@ class CaseServiceImplTest {
     void setUp() {
         OfficialProperties properties = new OfficialProperties();
         properties.getCache().setDefaultTtl(Duration.ofMinutes(10));
+        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         service = new CaseServiceImpl(
                 caseMapper,
+                caseVersionMapper,
                 caseConverter,
                 productMapper,
                 productConverter,
@@ -97,9 +103,10 @@ class CaseServiceImplTest {
                 mediaAssetService,
                 auditLogService,
                 properties,
-                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, properties, new ObjectMapper().registerModule(new JavaTimeModule())),
+                new PortalCacheSupport(redisTemplate, portalCacheKeyBuilder, portalCacheInvalidationSupport, properties, objectMapper),
                 org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
-                contentReferenceGuard);
+                contentReferenceGuard,
+                objectMapper);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(portalCacheKeyBuilder.build(anyString())).thenReturn("official:portal:cases");
     }

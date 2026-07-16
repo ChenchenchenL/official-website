@@ -16,6 +16,7 @@ import com.company.officialwebsite.modules.content.service.DetailPreviewTokenSer
 import com.company.officialwebsite.modules.content.service.DetailValidationSupport;
 import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
 import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
+import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService;
 import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.modules.product.entity.ProductDraftEntity;
@@ -77,6 +78,7 @@ public class ProductEditorServiceImpl implements ProductEditorService {
     private final ObjectMapper objectMapper;
     private final CaseMapper caseMapper;
     private final IndustrySolutionMapper industrySolutionMapper;
+    private final MediaAssetService mediaAssetService;
 
     public ProductEditorServiceImpl(
             ProductMapper productMapper,
@@ -91,7 +93,8 @@ public class ProductEditorServiceImpl implements ProductEditorService {
             PageCacheInvalidationService pageCacheInvalidationService,
             ObjectMapper objectMapper,
             CaseMapper caseMapper,
-            IndustrySolutionMapper industrySolutionMapper) {
+            IndustrySolutionMapper industrySolutionMapper,
+            MediaAssetService mediaAssetService) {
         this.productMapper = productMapper;
         this.draftMapper = draftMapper;
         this.versionMapper = versionMapper;
@@ -105,6 +108,7 @@ public class ProductEditorServiceImpl implements ProductEditorService {
         this.objectMapper = objectMapper;
         this.caseMapper = caseMapper;
         this.industrySolutionMapper = industrySolutionMapper;
+        this.mediaAssetService = mediaAssetService;
     }
 
     @Override
@@ -274,6 +278,8 @@ public class ProductEditorServiceImpl implements ProductEditorService {
         product.setVisible(1);
         productMapper.updateById(product);
 
+        mediaAssetService.bindPublishedSnapshotMedia("PRODUCT_VERSION", version.getId(), version.getSnapshotJson());
+
         // 审计
         Map<String, Object> logMap = new LinkedHashMap<>();
         logMap.put("productId", productId);
@@ -306,6 +312,8 @@ public class ProductEditorServiceImpl implements ProductEditorService {
         editorLockService.validateLock(EditorResourceTypeEnum.PRODUCT, productId, lockToken, operator);
 
         ProductEntity product = requireProductExists(productId);
+        // 校验已发布 ACTIVE 页面强引用拦截，禁止破坏上线引用的回滚操作
+        contentReferenceGuard.assertNotReferencedByPage("product", "Product", productId);
         ProductVersionEntity targetVersion = versionMapper.selectById(targetVersionId);
         if (targetVersion == null || !targetVersion.getProductId().equals(productId)) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "指定的历史发布版本不存在");
@@ -330,6 +338,8 @@ public class ProductEditorServiceImpl implements ProductEditorService {
         rollbackVersion.setRollbackSourceVersionId(targetVersion.getId());
         rollbackVersion.setPublishedAt(LocalDateTime.now());
         versionMapper.insert(rollbackVersion);
+        mediaAssetService.bindPublishedSnapshotMedia(
+                "PRODUCT_VERSION", rollbackVersion.getId(), rollbackVersion.getSnapshotJson());
 
         // 2. 同步重置草稿
         draft.setDraftJson(targetVersion.getSnapshotJson());
@@ -560,5 +570,13 @@ public class ProductEditorServiceImpl implements ProductEditorService {
     private String textValue(JsonNode objectNode, String field) {
         JsonNode value = objectNode.get(field);
         return value != null && value.isTextual() ? value.asText() : null;
+    }
+
+    private Long longValue(JsonNode objectNode, String field) {
+        if (objectNode == null) {
+            return null;
+        }
+        JsonNode value = objectNode.get(field);
+        return value != null && value.canConvertToLong() ? value.asLong() : null;
     }
 }

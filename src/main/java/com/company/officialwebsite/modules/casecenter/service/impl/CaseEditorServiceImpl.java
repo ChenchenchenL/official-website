@@ -23,8 +23,15 @@ import com.company.officialwebsite.modules.content.dto.DetailPreviewTokenData;
 import com.company.officialwebsite.modules.content.service.ContentReferenceGuard;
 import com.company.officialwebsite.modules.content.service.DetailPreviewTokenService;
 import com.company.officialwebsite.modules.content.service.DetailValidationSupport;
+import com.company.officialwebsite.modules.media.service.MediaAssetService;
 import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
+import com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService;
+import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.modules.product.mapper.ProductMapper;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +72,9 @@ public class CaseEditorServiceImpl implements CaseEditorService {
     private final ContentReferenceGuard contentReferenceGuard;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
+    private final PageCacheInvalidationService pageCacheInvalidationService;
+    private final ProductMapper productMapper;
+    private final MediaAssetService mediaAssetService;
     private final ObjectMapper objectMapper;
 
     public CaseEditorServiceImpl(
@@ -77,6 +87,9 @@ public class CaseEditorServiceImpl implements CaseEditorService {
             ContentReferenceGuard contentReferenceGuard,
             AuditLogService auditLogService,
             PortalCacheSupport portalCacheSupport,
+            PageCacheInvalidationService pageCacheInvalidationService,
+            ProductMapper productMapper,
+            MediaAssetService mediaAssetService,
             ObjectMapper objectMapper) {
         this.caseMapper = caseMapper;
         this.draftMapper = draftMapper;
@@ -87,6 +100,9 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         this.contentReferenceGuard = contentReferenceGuard;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
+        this.pageCacheInvalidationService = pageCacheInvalidationService;
+        this.productMapper = productMapper;
+        this.mediaAssetService = mediaAssetService;
         this.objectMapper = objectMapper;
     }
 
@@ -143,17 +159,21 @@ public class CaseEditorServiceImpl implements CaseEditorService {
 
         String jsonStr;
         try {
-            jsonStr = objectMapper.writeValueAsString(saveDTO.getDraft());
+            // 阻断项2：对草稿 JSON 执行富文本 XSS 清洗、媒体可用性、SEO、链接协议及关联实体校验
+            com.fasterxml.jackson.databind.JsonNode draftNode = objectMapper.valueToTree(saveDTO.getDraft());
+            validateAndSanitizeDraft(draftNode, null);
+            jsonStr = objectMapper.writeValueAsString(draftNode);
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "草稿 JSON 格式无效", e);
         }
 
-        String cleanedJsonStr = jsonStr;
-        String hash = computeHash(cleanedJsonStr);
+        String hash = computeHash(jsonStr);
 
         CaseDraftVO beforeSnapshot = toDraftVO(draft);
 
-        draft.setDraftJson(cleanedJsonStr);
+        draft.setDraftJson(jsonStr);
         draft.setDraftHash(hash);
         draft.setEditorSessionRemark(saveDTO.getEditorSessionRemark());
         draft.setUpdatedBy(operator);
@@ -177,11 +197,15 @@ public class CaseEditorServiceImpl implements CaseEditorService {
 
     @Override
     @Transactional(readOnly = true)
-    public String createPreviewToken(Long caseId, String lockToken, String operator) {
+    public String createPreviewToken(Long caseId, String draftHash, String lockToken, String operator) {
         editorLockService.validateLock(EditorResourceTypeEnum.CASE, caseId, lockToken, operator);
         CaseDraftEntity draft = queryDraftByCaseId(caseId);
         if (draft == null || draft.getDraftJson() == null) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "草稿内容为空，无法生成预览");
+        }
+        // 阻断项1：校验前端传入的 draftHash 必须与服务端当前草稿哈希一致，防止基于过期草稿生成预览
+        if (draftHash == null || !draftHash.trim().equals(draft.getDraftHash())) {
+            throw new BusinessException(ErrorCode.PAGE_PREVIEW_SCHEMA_HASH_MISMATCH, "草稿内容已变更，请先保存后再生成预览");
         }
 
         return detailPreviewTokenService.createToken(
@@ -192,9 +216,11 @@ public class CaseEditorServiceImpl implements CaseEditorService {
     @Transactional(readOnly = true)
     public Object renderPreview(Long caseId, String previewToken, String operator) {
         DetailPreviewTokenData tokenData = detailPreviewTokenService.resolveToken(previewToken);
+        // 校验资源类型与 ID 匹配
         if (!EditorResourceTypeEnum.CASE.equals(tokenData.getResourceType()) || !caseId.equals(tokenData.getResourceId())) {
             throw new BusinessException(ErrorCode.DETAIL_PREVIEW_TOKEN_EXPIRED, "预览 Token 与当前案例不匹配");
         }
+        // 校验仅限创建该预览 Token 的管理员访问
         if (tokenData.getCreatedBy() != null && !tokenData.getCreatedBy().equalsIgnoreCase(operator)) {
             throw new BusinessException(ErrorCode.AUTH_FORBIDDEN, "仅限创建该预览链接的管理员访问");
         }
@@ -202,6 +228,10 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         CaseDraftEntity draft = queryDraftByCaseId(caseId);
         if (draft == null) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "该案例的详情草稿不存在");
+        }
+        // 阻断项1：校验 Token 绑定的 draftHash 与当前草稿一致，防止草稿更新后旧 Token 访问新草稿
+        if (tokenData.getDraftHash() != null && !tokenData.getDraftHash().equals(draft.getDraftHash())) {
+            throw new BusinessException(ErrorCode.DETAIL_PREVIEW_TOKEN_EXPIRED, "预览链接已失效，草稿已更新，请重新生成预览");
         }
         try {
             return objectMapper.readValue(draft.getDraftJson(), Object.class);
@@ -227,6 +257,10 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         if (draft == null || draft.getDraftJson() == null) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "草稿不存在或内容为空，无法发布");
         }
+        // 阻断项3：发布前校验草稿乐观锁版本，防止以过期 version 发布
+        ConcurrencyHelper.assertVersion(draft.getVersion(), publishDTO.getVersion());
+        // 阻断项2：发布前对草稿执行完整校验（XSS、媒体、SEO、链接、关联实体）
+        validateDraftJson(draft.getDraftJson());
 
         int nextVerNo = getNextVersionNo(caseId);
 
@@ -239,6 +273,7 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         version.setPublisher(operator);
         version.setPublishedAt(LocalDateTime.now());
         versionMapper.insert(version);
+        mediaAssetService.bindPublishedSnapshotMedia("CASE_VERSION", version.getId(), version.getSnapshotJson());
 
         caseEntity.setStatus("PUBLISHED");
         caseEntity.setVisible(true);
@@ -274,10 +309,20 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         editorLockService.validateLock(EditorResourceTypeEnum.CASE, caseId, lockToken, operator);
 
         CaseEntity caseEntity = requireCaseExists(caseId);
+        // 校验已发布 ACTIVE 页面强引用拦截，禁止破坏上线引用的回滚操作
+        contentReferenceGuard.assertNotReferencedByPage("case", "Case", caseId);
         CaseVersionEntity targetVersion = versionMapper.selectById(targetVersionId);
         if (targetVersion == null || !targetVersion.getCaseId().equals(caseId)) {
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "指定的历史发布版本不存在");
         }
+        CaseDraftEntity draftForRollback = queryDraftByCaseId(caseId);
+        if (draftForRollback == null) {
+            throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "案例草稿不存在，无法回滚");
+        }
+        // 阻断项3：回滚前校验草稿乐观锁版本
+        ConcurrencyHelper.assertVersion(draftForRollback.getVersion(), rollbackDTO.getVersion());
+        // 阻断项4：回滚前检查已发布 ACTIVE 页面强引用，若存在则阻断回滚（409）
+        contentReferenceGuard.assertNotReferencedByPage("case", "Case", caseId);
 
         int nextVerNo = getNextVersionNo(caseId);
 
@@ -291,15 +336,14 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         rollbackVersion.setRollbackSourceVersionId(targetVersion.getId());
         rollbackVersion.setPublishedAt(LocalDateTime.now());
         versionMapper.insert(rollbackVersion);
+        mediaAssetService.bindPublishedSnapshotMedia(
+                "CASE_VERSION", rollbackVersion.getId(), rollbackVersion.getSnapshotJson());
 
-        CaseDraftEntity draft = queryDraftByCaseId(caseId);
-        if (draft != null) {
-            draft.setDraftJson(targetVersion.getSnapshotJson());
-            draft.setDraftHash(targetVersion.getSnapshotHash());
-            draft.setEditorSessionRemark("版本回滚自动覆盖草稿");
-            draft.setUpdatedBy(operator);
-            draftMapper.updateById(draft);
-        }
+        draftForRollback.setDraftJson(targetVersion.getSnapshotJson());
+        draftForRollback.setDraftHash(targetVersion.getSnapshotHash());
+        draftForRollback.setEditorSessionRemark("版本回滚自动覆盖草稿");
+        draftForRollback.setUpdatedBy(operator);
+        draftMapper.updateById(draftForRollback);
 
         caseEntity.setStatus("PUBLISHED");
         caseEntity.setVisible(true);
@@ -323,6 +367,12 @@ public class CaseEditorServiceImpl implements CaseEditorService {
         editorLockService.validateLock(EditorResourceTypeEnum.CASE, caseId, lockToken, operator);
 
         CaseEntity caseEntity = requireCaseExists(caseId);
+        CaseDraftEntity draftForOffline = queryDraftByCaseId(caseId);
+        if (draftForOffline == null) {
+            throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "案例草稿不存在，无法下线");
+        }
+        // 阻断项3：下线前校验草稿乐观锁版本
+        ConcurrencyHelper.assertVersion(draftForOffline.getVersion(), offlineDTO.getVersion());
 
         // 校验已发布 ACTIVE 页面强引用拦截
         contentReferenceGuard.assertNotReferencedByPage("case", "Case", caseId);
@@ -411,8 +461,94 @@ public class CaseEditorServiceImpl implements CaseEditorService {
     }
 
     private void invalidateCaseCache(Long caseId) {
-        String detailCacheKey = portalCacheSupport.buildKey("case", "detail", String.valueOf(caseId));
-        String listCacheKey = portalCacheSupport.buildKey("case", "list");
-        portalCacheSupport.invalidate(detailCacheKey, listCacheKey);
+        portalCacheSupport.invalidate(portalCacheSupport.buildKey("cases"));
+        pageCacheInvalidationService.invalidateCacheByTarget("case", "Case", String.valueOf(caseId));
+    }
+
+    /** 对案例草稿执行富文本、媒体、SEO、链接及关联案例/产品校验。 */
+    private void validateAndSanitizeDraft(JsonNode node, String parentField) {
+        if (node == null || node.isNull()) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "草稿内容不能为空");
+        }
+        if (node.isObject()) {
+            ObjectNode objectNode = (ObjectNode) node;
+            objectNode.fields().forEachRemaining(entry -> {
+                String field = entry.getKey();
+                JsonNode value = entry.getValue();
+                String normalized = field.toLowerCase();
+                if (value.isTextual()) {
+                    if (normalized.contains("content") || normalized.contains("richtext")
+                            || normalized.contains("html") || normalized.equals("body")) {
+                        objectNode.put(field, detailValidationSupport.cleanRichTextHtml(value.asText()));
+                    }
+                    if (normalized.endsWith("link") || normalized.endsWith("url")) {
+                        detailValidationSupport.validateLinkProtocol(value.asText());
+                    }
+                }
+                if (value.isNumber()) {
+                    validateReferencedId(normalized, value.asLong());
+                    if (isMediaIdField(normalized)) {
+                        detailValidationSupport.validateMediaUsable(value.asLong());
+                    }
+                }
+                validateAndSanitizeDraft(value, normalized);
+            });
+            JsonNode seo = objectNode.get("seo");
+            if (seo != null && seo.isObject()) {
+                detailValidationSupport.validateSeo(textValue(seo, "title"), textValue(seo, "description"));
+            }
+        } else if (node.isArray()) {
+            for (JsonNode item : (ArrayNode) node) {
+                if (item.isNumber()) {
+                    validateReferencedId(parentField, item.asLong());
+                    if (isMediaIdField(parentField)) {
+                        detailValidationSupport.validateMediaUsable(item.asLong());
+                    }
+                }
+                validateAndSanitizeDraft(item, parentField);
+            }
+        }
+    }
+
+    private void validateDraftJson(String draftJson) {
+        try {
+            validateAndSanitizeDraft(objectMapper.readTree(draftJson), null);
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "草稿 JSON 格式无效", exception);
+        }
+    }
+
+    private boolean isMediaIdField(String field) {
+        return field != null && (field.equals("mediaid") || field.equals("mediaids")
+                || field.equals("logomediaid") || field.equals("covermediaid")
+                || field.equals("imageid") || field.equals("imageids")
+                || field.equals("thumbnailid") || field.equals("thumbnailids"));
+    }
+
+    private void validateReferencedId(String field, Long id) {
+        if (field == null) {
+            return;
+        }
+        if (id == null || id <= 0) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "关联资源 ID 必须为正数");
+        }
+        if (field.equals("caseid") || field.equals("caseids") || field.equals("recommendedcaseids")) {
+            if (caseMapper.selectById(id) == null) {
+                throw new BusinessException(ErrorCode.CASE_NOT_FOUND, "关联案例不存在或已删除: " + id);
+            }
+        }
+        if (field.equals("productid") || field.equals("productids") || field.equals("relatedproductids")) {
+            ProductEntity product = productMapper.selectById(id);
+            if (product == null) {
+                throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, "关联产品不存在或已删除: " + id);
+            }
+        }
+    }
+
+    private String textValue(JsonNode objectNode, String field) {
+        JsonNode value = objectNode.get(field);
+        return value != null && value.isTextual() ? value.asText() : null;
     }
 }

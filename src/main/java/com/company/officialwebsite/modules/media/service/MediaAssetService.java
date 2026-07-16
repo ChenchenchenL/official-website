@@ -40,4 +40,10 @@ public interface MediaAssetService {
      * 维护业务字段到媒体资源的绑定关系，并同步媒体生命周期状态。
      */
     void bindMedia(Long mediaId, String bizModule, Long bizObjectId, String bizField);
+
+    /**
+     * 扫描已发布详情快照中的媒体 ID，并为不可变版本快照登记媒体引用。
+     * 历史版本保留独立引用，避免后续草稿变更解除已发布内容的媒体保护。
+     */
+    void bindPublishedSnapshotMedia(String snapshotModule, Long snapshotId, String snapshotJson);
 }

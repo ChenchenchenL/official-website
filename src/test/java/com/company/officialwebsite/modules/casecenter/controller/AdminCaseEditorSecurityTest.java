@@ -88,15 +88,32 @@ class AdminCaseEditorSecurityTest {
                         .with(user("admin_case").roles("ADMINISTRATOR"))
                         .header("X-Editor-Lock-Token", lock.getLockToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"version\":0,\"draft\":{\"title\":\"某知名央企数字化转型\",\"summary\":\"打造全国领先的数据中台\"},\"editorSessionRemark\":\"首次完善案例\"}"))
+                        .content("{\"version\":0,\"draft\":{\"title\":\"某知名央企数字化转型\",\"summary\":\"打造全国领先的数据中台\",\"content\":\"<p>发布快照正文</p>\",\"seo\":{\"title\":\"案例 SEO 标题\",\"description\":\"案例 SEO 描述\"}},\"editorSessionRemark\":\"首次完善案例\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0));
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+
+        String draftResponse = mockMvc.perform(get("/admin/api/cases/" + caseId + "/draft")
+                        .with(user("admin_case").roles("ADMINISTRATOR")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String draftHash = objectMapper.readTree(draftResponse).path("data").path("draftHash").asText();
+
+        mockMvc.perform(post("/admin/api/cases/" + caseId + "/draft/previews")
+                        .with(csrf())
+                        .with(user("admin_case").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
 
         // 4. 持锁生成受控预览 Token -> 200 OK
         String tokenResp = mockMvc.perform(post("/admin/api/cases/" + caseId + "/draft/previews")
                         .with(csrf())
                         .with(user("admin_case").roles("ADMINISTRATOR"))
-                        .header("X-Editor-Lock-Token", lock.getLockToken()))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"draftHash\":\"" + draftHash + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data").exists())
@@ -128,13 +145,19 @@ class AdminCaseEditorSecurityTest {
                         .with(user("admin_case").roles("ADMINISTRATOR"))
                         .header("X-Editor-Lock-Token", lock.getLockToken())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"version\":0,\"changeSummary\":\"发布案例首个正式版本\"}"))
+                        .content("{\"version\":1,\"changeSummary\":\"发布案例首个正式版本\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.versionNo").value(1))
                 .andReturn().getResponse().getContentAsString();
 
         Long versionId = objectMapper.readTree(pubResp).path("data").path("id").asLong();
+
+        mockMvc.perform(get("/portal/api/cases/" + caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").value("<p>发布快照正文</p>"))
+                .andExpect(jsonPath("$.data.seoTitle").value("案例 SEO 标题"))
+                .andExpect(jsonPath("$.data.seoDescription").value("案例 SEO 描述"));
 
         // 8. 查询历史版本列表 -> 200 OK
         mockMvc.perform(get("/admin/api/cases/" + caseId + "/versions")
@@ -184,5 +207,156 @@ class AdminCaseEditorSecurityTest {
                         .content("{\"version\":2,\"reason\":\"正式下线无强引用案例\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
+    @DisplayName("案例预览必须绑定草稿哈希和创建管理员")
+    void preview_shouldRejectMismatchedHashNonCreatorAndStaleToken() throws Exception {
+        Long caseId = createCaseDraftShell("preview_owner");
+        LockStatusVO lock = acquireCaseLock(caseId, "preview_owner");
+        saveDraft(caseId, lock.getLockToken(), "preview_owner", 0,
+                "{\"title\":\"预览案例\",\"content\":\"<p>V1</p>\"}");
+        String draftHash = getDraftHash(caseId, "preview_owner");
+
+        mockMvc.perform(post("/admin/api/cases/" + caseId + "/draft/previews")
+                        .with(csrf()).with(user("preview_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"draftHash\":\"invalid\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(90006));
+
+        String previewResponse = mockMvc.perform(post("/admin/api/cases/" + caseId + "/draft/previews")
+                        .with(csrf()).with(user("preview_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"draftHash\":\"" + draftHash + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String previewToken = objectMapper.readTree(previewResponse).path("data").asText();
+
+        mockMvc.perform(get("/portal/api/cases/" + caseId + "/previews/" + previewToken)
+                        .with(user("another_admin").roles("ADMINISTRATOR")))
+                .andExpect(status().isForbidden());
+
+        saveDraft(caseId, lock.getLockToken(), "preview_owner", 1,
+                "{\"title\":\"预览案例\",\"content\":\"<p>V2</p>\"}");
+        mockMvc.perform(get("/portal/api/cases/" + caseId + "/previews/" + previewToken)
+                        .with(user("preview_owner").roles("ADMINISTRATOR")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("案例发布回滚必须校验锁、版本与强引用")
+    void publishAndRollback_shouldRejectWrongLockStaleVersionAndReference() throws Exception {
+        Long caseId = createCaseDraftShell("version_owner");
+        LockStatusVO lock = acquireCaseLock(caseId, "version_owner");
+        saveDraft(caseId, lock.getLockToken(), "version_owner", 0, "{\"title\":\"并发案例\"}");
+
+        mockMvc.perform(post("/admin/api/cases/" + caseId + "/publish")
+                        .with(csrf()).with(user("version_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", "invalid-lock-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":1,\"changeSummary\":\"错误锁\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(10009));
+
+        mockMvc.perform(post("/admin/api/cases/" + caseId + "/publish")
+                        .with(csrf()).with(user("version_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0,\"changeSummary\":\"过期版本\"}"))
+                .andExpect(status().isConflict());
+
+        String publishResponse = mockMvc.perform(post("/admin/api/cases/" + caseId + "/publish")
+                        .with(csrf()).with(user("version_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":1,\"changeSummary\":\"发布 V1\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long versionId = objectMapper.readTree(publishResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(post("/admin/api/cases/" + caseId + "/rollback/" + versionId)
+                        .with(csrf()).with(user("version_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0,\"changeSummary\":\"过期回滚\"}"))
+                .andExpect(status().isConflict());
+
+        ContentReferenceEntity reference = new ContentReferenceEntity();
+        reference.setReferrerType("PAGE");
+        reference.setReferrerKey("case-detail");
+        reference.setReferencedType("CASE");
+        reference.setReferencedId(caseId);
+        reference.setReferenceType("STRONG");
+        contentReferenceMapper.insert(reference);
+        mockMvc.perform(post("/admin/api/cases/" + caseId + "/rollback/" + versionId)
+                        .with(csrf()).with(user("version_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":1,\"changeSummary\":\"被引用回滚\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(10010));
+    }
+
+    @Test
+    @DisplayName("案例草稿必须清洗 XSS 并拒绝非法媒体、链接和关联数组")
+    void saveDraft_shouldSanitizeAndRejectInvalidReferences() throws Exception {
+        Long caseId = createCaseDraftShell("validation_owner");
+        LockStatusVO lock = acquireCaseLock(caseId, "validation_owner");
+        saveDraft(caseId, lock.getLockToken(), "validation_owner", 0,
+                "{\"title\":\"校验案例\",\"content\":\"<script>alert(1)</script><p>安全正文</p>\"}");
+        mockMvc.perform(get("/admin/api/cases/" + caseId + "/draft")
+                        .with(user("validation_owner").roles("ADMINISTRATOR")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.draftJson.content").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("script"))));
+
+        assertInvalidDraft(caseId, lock.getLockToken(), "validation_owner", 1,
+                "{\"title\":\"校验案例\",\"imageIds\":[999999]}" );
+        assertInvalidDraft(caseId, lock.getLockToken(), "validation_owner", 1,
+                "{\"title\":\"校验案例\",\"detailLink\":\"javascript:alert(1)\"}" );
+        assertInvalidDraft(caseId, lock.getLockToken(), "validation_owner", 1,
+                "{\"title\":\"校验案例\",\"productIds\":[999999]}" );
+        assertInvalidDraft(caseId, lock.getLockToken(), "validation_owner", 1,
+                "{\"title\":\"校验案例\",\"recommendedCaseIds\":[999999]}" );
+    }
+
+    private Long createCaseDraftShell(String username) throws Exception {
+        String response = mockMvc.perform(post("/admin/api/cases/drafts")
+                        .with(csrf()).with(user(username).roles("ADMINISTRATOR")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data").path("caseId").asLong();
+    }
+
+    private LockStatusVO acquireCaseLock(Long caseId, String username) {
+        return editorLockService.acquireLock(EditorResourceTypeEnum.CASE, caseId, null, username, "案例运营", true);
+    }
+
+    private void saveDraft(Long caseId, String lockToken, String username, int version, String draftJson) throws Exception {
+        mockMvc.perform(put("/admin/api/cases/" + caseId + "/draft")
+                        .with(csrf()).with(user(username).roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":" + version + ",\"draft\":" + draftJson + "}"))
+                .andExpect(status().isOk());
+    }
+
+    private String getDraftHash(Long caseId, String username) throws Exception {
+        String response = mockMvc.perform(get("/admin/api/cases/" + caseId + "/draft")
+                        .with(user(username).roles("ADMINISTRATOR")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data").path("draftHash").asText();
+    }
+
+    private void assertInvalidDraft(Long caseId, String lockToken, String username, int version, String draftJson) throws Exception {
+        mockMvc.perform(put("/admin/api/cases/" + caseId + "/draft")
+                        .with(csrf()).with(user(username).roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":" + version + ",\"draft\":" + draftJson + "}"))
+                .andExpect(status().is4xxClientError());
     }
 }

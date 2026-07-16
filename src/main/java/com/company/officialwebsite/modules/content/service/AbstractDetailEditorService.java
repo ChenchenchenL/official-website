@@ -7,6 +7,7 @@ import com.company.officialwebsite.common.dto.DetailRollbackDTO;
 import com.company.officialwebsite.common.enums.EditorResourceTypeEnum;
 import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import java.util.Objects;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * AbstractDetailEditorService：三类独立内容详情（产品、案例、行业方案）编辑框架通用抽象基类。
@@ -43,7 +44,8 @@ public abstract class AbstractDetailEditorService<D, V> {
      * @param operator   当前操作管理员
      * @return 更新后的草稿
      */
-    public final D saveDraft(Long resourceId, DetailDraftSaveDTO saveDTO, String lockToken, String operator) {
+    @Transactional
+    public D saveDraft(Long resourceId, DetailDraftSaveDTO saveDTO, String lockToken, String operator) {
         validateEditorLock(resourceId, lockToken, operator);
         return doSaveDraft(resourceId, saveDTO, operator);
     }
@@ -61,7 +63,8 @@ public abstract class AbstractDetailEditorService<D, V> {
      * @param operator   发布管理员
      * @return 生成的版本快照
      */
-    public final V publish(Long resourceId, DetailPublishDTO publishDTO, String lockToken, String operator) {
+    @Transactional
+    public V publish(Long resourceId, DetailPublishDTO publishDTO, String lockToken, String operator) {
         validateEditorLock(resourceId, lockToken, operator);
         return doPublish(resourceId, publishDTO, operator);
     }
@@ -80,7 +83,8 @@ public abstract class AbstractDetailEditorService<D, V> {
      * @param operator        操作管理员
      * @return 生成的新版本快照
      */
-    public final V rollback(
+    @Transactional
+    public V rollback(
             Long resourceId,
             Long targetVersionId,
             DetailRollbackDTO rollbackDTO,
@@ -106,7 +110,8 @@ public abstract class AbstractDetailEditorService<D, V> {
      * @param offlineDTO 下线原因与版本
      * @param operator   操作管理员
      */
-    public final void offline(Long resourceId, DetailOfflineDTO offlineDTO, String lockToken, String operator) {
+    @Transactional
+    public void offline(Long resourceId, DetailOfflineDTO offlineDTO, String lockToken, String operator) {
         validateEditorLock(resourceId, lockToken, operator);
         doOffline(resourceId, offlineDTO, operator);
     }
@@ -117,7 +122,7 @@ public abstract class AbstractDetailEditorService<D, V> {
     protected abstract void doOffline(Long resourceId, DetailOfflineDTO offlineDTO, String operator);
 
     /**
-     * 统一的受保护写操作门禁，子类无法绕过该模板方法执行草稿、发布、回滚或下线。
+     * 统一的受保护写操作门禁。实现类应仅实现 do* 钩子，不得重复或绕过该校验。
      */
     private void validateEditorLock(Long resourceId, String lockToken, String operator) {
         editorLockService.validateLock(getResourceType(), resourceId, lockToken, operator);

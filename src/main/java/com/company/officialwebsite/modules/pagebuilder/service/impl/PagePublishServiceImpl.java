@@ -36,6 +36,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
+import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
+import com.company.officialwebsite.modules.product.entity.IndustrySolutionEntity;
+import com.company.officialwebsite.modules.product.entity.IndustrySolutionVersionEntity;
+import com.company.officialwebsite.modules.product.entity.ProductEntity;
+import com.company.officialwebsite.modules.product.mapper.IndustrySolutionMapper;
+import com.company.officialwebsite.modules.product.mapper.IndustrySolutionVersionMapper;
+import com.company.officialwebsite.modules.product.mapper.ProductMapper;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,12 +68,17 @@ public class PagePublishServiceImpl implements PagePublishService {
     private final PageVersionMapper pageVersionMapper;
     private final PagePublishSnapshotMapper pagePublishSnapshotMapper;
     private final PageDependencyMapper pageDependencyMapper;
+    private final ProductMapper productMapper;
+    private final CaseMapper caseMapper;
+    private final IndustrySolutionMapper industrySolutionMapper;
+    private final IndustrySolutionVersionMapper industrySolutionVersionMapper;
     private final ComponentTemplateService componentTemplateService;
     private final PageVersionConverter pageVersionConverter;
     private final EditorLockService editorLockService;
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
     private final PageCacheInvalidationService pageCacheInvalidationService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public PagePublishServiceImpl(
             PageDefinitionMapper pageDefinitionMapper,
@@ -73,23 +86,33 @@ public class PagePublishServiceImpl implements PagePublishService {
             PageVersionMapper pageVersionMapper,
             PagePublishSnapshotMapper pagePublishSnapshotMapper,
             PageDependencyMapper pageDependencyMapper,
+            ProductMapper productMapper,
+            CaseMapper caseMapper,
+            IndustrySolutionMapper industrySolutionMapper,
+            IndustrySolutionVersionMapper industrySolutionVersionMapper,
             ComponentTemplateService componentTemplateService,
             PageVersionConverter pageVersionConverter,
             EditorLockService editorLockService,
             AuditLogService auditLogService,
             PortalCacheSupport portalCacheSupport,
-            PageCacheInvalidationService pageCacheInvalidationService) {
+            PageCacheInvalidationService pageCacheInvalidationService,
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.pageDefinitionMapper = pageDefinitionMapper;
         this.pageDraftMapper = pageDraftMapper;
         this.pageVersionMapper = pageVersionMapper;
         this.pagePublishSnapshotMapper = pagePublishSnapshotMapper;
         this.pageDependencyMapper = pageDependencyMapper;
+        this.productMapper = productMapper;
+        this.caseMapper = caseMapper;
+        this.industrySolutionMapper = industrySolutionMapper;
+        this.industrySolutionVersionMapper = industrySolutionVersionMapper;
         this.componentTemplateService = componentTemplateService;
         this.pageVersionConverter = pageVersionConverter;
         this.editorLockService = editorLockService;
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
         this.pageCacheInvalidationService = pageCacheInvalidationService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -112,6 +135,9 @@ public class PagePublishServiceImpl implements PagePublishService {
 
         // 草稿乐观锁版本校验，防止并发覆盖
         ConcurrencyHelper.assertVersion(draft.getVersion(), dto.getVersion());
+
+        // 强校验所引用的详情实体是否已发布且上线可见
+        validateReferencedEntitiesUsable(draft.getSchemaJson());
 
         // 1. 计算版本序号
         int nextVerNo = getNextVersionNo(pageId);
@@ -444,5 +470,78 @@ public class PagePublishServiceImpl implements PagePublishService {
             case "lead" -> null; // lead 无 Portal 公开列表
             default -> null;
         };
+    }
+
+    private void validateReferencedEntitiesUsable(PageSchemaModel schema) {
+        if (schema == null || schema.getSections() == null) {
+            return;
+        }
+
+        for (SectionModel section : schema.getSections()) {
+            BindingModel binding = section.getBinding();
+            if (binding == null || binding.getMode() == null) {
+                continue;
+            }
+            String mode = binding.getMode().trim().toUpperCase();
+            String source = binding.getSource();
+            if (!("ENTITY".equals(mode) || "AGGREGATE".equals(mode)) || source == null) {
+                continue;
+            }
+            source = source.trim().toLowerCase();
+            Map<String, Object> query = binding.getQuery();
+            if (query == null) {
+                continue;
+            }
+
+            Set<Long> checkIds = new HashSet<>();
+            if (query.containsKey("id") && query.get("id") != null) {
+                try {
+                    checkIds.add(Long.parseLong(query.get("id").toString().trim()));
+                } catch (Exception ignored) {
+                }
+            } else if (query.containsKey("ids") && query.get("ids") instanceof List) {
+                List<?> idsList = (List<?>) query.get("ids");
+                for (Object item : idsList) {
+                    if (item != null) {
+                        try {
+                            checkIds.add(Long.parseLong(item.toString().trim()));
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+            }
+
+            for (Long refId : checkIds) {
+                if ("product".equals(source)) {
+                    ProductEntity product = productMapper.selectById(refId);
+                    if (product == null || (product.getDeletedMarker() != null && product.getDeletedMarker() != 0L)
+                            || !"PUBLISHED".equalsIgnoreCase(product.getStatus()) || Integer.valueOf(0).equals(product.getVisible())) {
+                        throw new BusinessException(ErrorCode.DETAIL_PUBLISH_VALIDATION_FAILED,
+                                "页面引用的产品 (ID: " + refId + ") 未发布上线或已不可见，无法发布页面");
+                    }
+                } else if ("case".equals(source)) {
+                    CaseEntity caseEntity = caseMapper.selectById(refId);
+                    if (caseEntity == null || (caseEntity.getDeletedMarker() != null && caseEntity.getDeletedMarker() != 0L)
+                            || !"PUBLISHED".equalsIgnoreCase(caseEntity.getStatus()) || Boolean.FALSE.equals(caseEntity.getVisible())) {
+                        throw new BusinessException(ErrorCode.DETAIL_PUBLISH_VALIDATION_FAILED,
+                                "页面引用的标杆案例 (ID: " + refId + ") 未发布上线或已不可见，无法发布页面");
+                    }
+                } else if ("industry_solution".equals(source)) {
+                    IndustrySolutionEntity solution = industrySolutionMapper.selectById(refId);
+                    if (solution == null || (solution.getDeletedMarker() != null && solution.getDeletedMarker() != 0L)
+                            || Boolean.FALSE.equals(solution.getVisible())) {
+                        throw new BusinessException(ErrorCode.DETAIL_PUBLISH_VALIDATION_FAILED,
+                                "页面引用的行业解决方案 (ID: " + refId + ") 未发布上线或已不可见，无法发布页面");
+                    }
+                    boolean hasPublishedSnapshot = industrySolutionVersionMapper.exists(
+                            new LambdaQueryWrapper<IndustrySolutionVersionEntity>()
+                                    .eq(IndustrySolutionVersionEntity::getSolutionId, refId));
+                    if (!hasPublishedSnapshot) {
+                        throw new BusinessException(ErrorCode.DETAIL_PUBLISH_VALIDATION_FAILED,
+                                "页面引用的行业解决方案 (ID: " + refId + ") 不存在正式发布快照，无法发布页面");
+                    }
+                }
+            }
+        }
     }
 }

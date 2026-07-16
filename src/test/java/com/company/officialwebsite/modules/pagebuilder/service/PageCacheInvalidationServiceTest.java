@@ -103,6 +103,29 @@ class PageCacheInvalidationServiceTest {
                 PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "home-page", actualKeys[1]);
     }
 
+    /** 案例发布、回滚或下线时，应按案例依赖清理页面渲染与 SEO 缓存。 */
+    @Test
+    void invalidateCacheByTarget_shouldInvalidateCasePageRenderAndSeoCaches() {
+        when(pageDependencyMapper.selectPageIdsByTarget("case", "Case", "42"))
+                .thenReturn(List.of(42L));
+
+        PageRouteProjection projection = new PageRouteProjection();
+        projection.setId(42L);
+        projection.setPageKey("case-detail");
+        projection.setRoutePath("/cases/42");
+        when(pageDefinitionMapper.selectRoutesByPageIds(List.of(42L)))
+                .thenReturn(List.of(projection));
+
+        service.invalidateCacheByTarget("case", "Case", "42");
+
+        ArgumentCaptor<String[]> keysCaptor = ArgumentCaptor.forClass(String[].class);
+        verify(portalCacheSupport).invalidate(keysCaptor.capture());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new String[]{
+                PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/cases/42",
+                PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "case-detail"
+        }, keysCaptor.getValue());
+    }
+
     /**
      * 当有多个依赖页面时，所有页面的缓存 key 均应被失效（单次调用）。
      */

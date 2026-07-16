@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -27,16 +28,28 @@ public class PortalCacheInvalidationSupport {
     private final TaskScheduler taskScheduler;
     private final PortalCacheKeyBuilder portalCacheKeyBuilder;
     private final OfficialProperties officialProperties;
+    private final PortalCacheInvalidationRetryService retryService;
 
     public PortalCacheInvalidationSupport(
             RedisTemplate<String, Object> redisTemplate,
             TaskScheduler taskScheduler,
             PortalCacheKeyBuilder portalCacheKeyBuilder,
             OfficialProperties officialProperties) {
+        this(redisTemplate, taskScheduler, portalCacheKeyBuilder, officialProperties, null);
+    }
+
+    @Autowired
+    public PortalCacheInvalidationSupport(
+            RedisTemplate<String, Object> redisTemplate,
+            TaskScheduler taskScheduler,
+            PortalCacheKeyBuilder portalCacheKeyBuilder,
+            OfficialProperties officialProperties,
+            PortalCacheInvalidationRetryService retryService) {
         this.redisTemplate = redisTemplate;
         this.taskScheduler = taskScheduler;
         this.portalCacheKeyBuilder = portalCacheKeyBuilder;
         this.officialProperties = officialProperties;
+        this.retryService = retryService;
     }
 
     /**
@@ -95,6 +108,7 @@ public class PortalCacheInvalidationSupport {
                     keys, deleted, TraceContext.getTraceId());
         } catch (Exception ex) {
             log.error("cache invalidation failed keys={} traceId={}", keys, TraceContext.getTraceId(), ex);
+            enqueueRetry(keys, ex);
         }
     }
 
@@ -109,6 +123,18 @@ public class PortalCacheInvalidationSupport {
                     officialProperties.getCache().getSecondDeleteDelay(),
                     TraceContext.getTraceId(),
                     ex);
+            enqueueRetry(keys, ex);
+        }
+    }
+
+    private void enqueueRetry(List<String> keys, Exception exception) {
+        if (retryService == null) {
+            return;
+        }
+        try {
+            retryService.enqueue(keys, exception);
+        } catch (Exception retryException) {
+            log.error("persist cache invalidation retry failed keys={}", keys, retryException);
         }
     }
 }

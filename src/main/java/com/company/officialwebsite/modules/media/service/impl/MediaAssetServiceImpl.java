@@ -21,8 +21,11 @@ import com.company.officialwebsite.modules.media.support.MediaValidationSupport;
 import com.company.officialwebsite.modules.media.vo.MediaAssetVO;
 import com.company.officialwebsite.modules.media.vo.MediaUploadVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -49,6 +52,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
     private static final String DEFAULT_USAGE_TAG = "OTHER";
     private static final List<String> ACTIVE_LIKE_STATUSES = List.of("ACTIVE", "TEMPORARY", "BOUND", "UNBOUND");
     private static final List<String> USAGE_TAGS = List.of("LOGO", "BANNER", "PRODUCT", "CASE", "CLIENT", "HONOR", "ICON", "OTHER");
+    private static final ObjectMapper SNAPSHOT_OBJECT_MAPPER = new ObjectMapper();
 
     private final MediaAssetMapper mediaAssetMapper;
     private final MediaReferenceMapper mediaReferenceMapper;
@@ -215,12 +219,13 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             return;
         }
         contentReferenceGuard.assertNotReferenced(TARGET_TYPE, entity.getId());
+        contentReferenceGuard.assertNotReferencedByPage("media", "MediaAssetEntity", entity.getId());
 
         boolean referenced = mediaReferenceMapper.selectCount(new LambdaQueryWrapper<MediaReferenceEntity>()
                 .eq(MediaReferenceEntity::getMediaId, id)
                 .eq(MediaReferenceEntity::getDeletedMarker, 0L)) > 0;
         if (referenced) {
-            throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "该媒体正在被使用，无法删除");
+            throw new BusinessException(ErrorCode.RESOURCE_REFERENCE_CONFLICT, "该媒体正在被已发布的页面或数据绑定使用，无法删除");
         }
 
         Map<String, Object> before = toSnapshot(entity);
@@ -293,6 +298,68 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             eventPublisher.publishEvent(EntityChangedEvent.of(this, "media", "MediaAsset", String.valueOf(oldMediaId)));
         }
         eventPublisher.publishEvent(EntityChangedEvent.of(this, "media", "MediaAsset", String.valueOf(mediaId)));
+    }
+
+    @Override
+    @Transactional
+    public void bindPublishedSnapshotMedia(String snapshotModule, Long snapshotId, String snapshotJson) {
+        if (!StringUtils.hasText(snapshotModule) || snapshotId == null || snapshotId <= 0 || !StringUtils.hasText(snapshotJson)) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "发布快照媒体引用参数不完整");
+        }
+        try {
+            Map<String, Long> mediaByField = new LinkedHashMap<>();
+            collectSnapshotMediaIds(SNAPSHOT_OBJECT_MAPPER.readTree(snapshotJson), "root", mediaByField);
+            for (Map.Entry<String, Long> entry : mediaByField.entrySet()) {
+                bindMedia(entry.getValue(), snapshotModule, snapshotId, toSnapshotBizField(entry.getKey()));
+            }
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "发布快照 JSON 格式无效", exception);
+        }
+    }
+
+    private void collectSnapshotMediaIds(JsonNode node, String fieldPath, Map<String, Long> mediaByField) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> collectSnapshotMediaIds(
+                    entry.getValue(), fieldPath + "." + entry.getKey(), mediaByField));
+            return;
+        }
+        if (node.isArray()) {
+            for (int index = 0; index < node.size(); index++) {
+                collectSnapshotMediaIds(node.get(index), fieldPath + "[" + index + "]", mediaByField);
+            }
+            return;
+        }
+        if (node.isNumber() && isSnapshotMediaField(lastFieldName(fieldPath)) && node.asLong() > 0) {
+            mediaByField.put(fieldPath, node.asLong());
+        }
+    }
+
+    private boolean isSnapshotMediaField(String fieldName) {
+        return "mediaid".equals(fieldName) || "mediaids".equals(fieldName)
+                || "imageid".equals(fieldName) || "imageids".equals(fieldName)
+                || "coverid".equals(fieldName) || "covermediaid".equals(fieldName)
+                || "logoid".equals(fieldName) || "logomediaid".equals(fieldName)
+                || "thumbnailid".equals(fieldName) || "thumbnailids".equals(fieldName)
+                || "iconmediaid".equals(fieldName);
+    }
+
+    private String lastFieldName(String fieldPath) {
+        int separator = fieldPath.lastIndexOf('.');
+        String field = separator >= 0 ? fieldPath.substring(separator + 1) : fieldPath;
+        return field.replaceAll("\\[\\d+]$", "").toLowerCase();
+    }
+
+    private String toSnapshotBizField(String fieldPath) {
+        String prefix = "snapshot:";
+        if (prefix.length() + fieldPath.length() <= 64) {
+            return prefix + fieldPath;
+        }
+        return prefix + fieldPath.substring(0, 48) + "_" + Integer.toUnsignedString(fieldPath.hashCode(), 36);
     }
 
     private void refreshMediaStatus(Long mediaId) {

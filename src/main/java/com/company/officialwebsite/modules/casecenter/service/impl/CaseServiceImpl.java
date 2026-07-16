@@ -16,7 +16,9 @@ import com.company.officialwebsite.modules.casecenter.dto.CaseCreateDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseDeleteDTO;
 import com.company.officialwebsite.modules.casecenter.dto.CaseUpdateDTO;
 import com.company.officialwebsite.modules.casecenter.entity.CaseEntity;
+import com.company.officialwebsite.modules.casecenter.entity.CaseVersionEntity;
 import com.company.officialwebsite.modules.casecenter.mapper.CaseMapper;
+import com.company.officialwebsite.modules.casecenter.mapper.CaseVersionMapper;
 import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.casecenter.service.CaseService;
 import com.company.officialwebsite.modules.casecenter.vo.AdminCaseVO;
@@ -31,6 +33,8 @@ import com.company.officialwebsite.modules.product.entity.ProductEntity;
 import com.company.officialwebsite.modules.product.mapper.ProductMapper;
 import com.company.officialwebsite.modules.product.vo.PortalProductVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -84,6 +88,7 @@ public class CaseServiceImpl implements CaseService {
     private static final String MSG_SORT_VALUE_LIMIT = "排序值已达到上限，请先整理现有案例";
 
     private final CaseMapper caseMapper;
+    private final CaseVersionMapper caseVersionMapper;
     private final CaseConverter caseConverter;
     private final ProductMapper productMapper;
     private final ProductConverter productConverter;
@@ -93,10 +98,12 @@ public class CaseServiceImpl implements CaseService {
     private final PortalCacheSupport portalCacheSupport;
     private final ApplicationEventPublisher eventPublisher;
     private final ContentReferenceGuard contentReferenceGuard;
+    private final ObjectMapper objectMapper;
     private final int sortGap;
 
     public CaseServiceImpl(
             CaseMapper caseMapper,
+            CaseVersionMapper caseVersionMapper,
             CaseConverter caseConverter,
             ProductMapper productMapper,
             ProductConverter productConverter,
@@ -106,8 +113,10 @@ public class CaseServiceImpl implements CaseService {
             OfficialProperties officialProperties,
             PortalCacheSupport portalCacheSupport,
             ApplicationEventPublisher eventPublisher,
-            ContentReferenceGuard contentReferenceGuard) {
+            ContentReferenceGuard contentReferenceGuard,
+            ObjectMapper objectMapper) {
         this.caseMapper = caseMapper;
+        this.caseVersionMapper = caseVersionMapper;
         this.caseConverter = caseConverter;
         this.productMapper = productMapper;
         this.productConverter = productConverter;
@@ -117,6 +126,7 @@ public class CaseServiceImpl implements CaseService {
         this.portalCacheSupport = portalCacheSupport;
         this.eventPublisher = eventPublisher;
         this.contentReferenceGuard = contentReferenceGuard;
+        this.objectMapper = objectMapper;
         this.sortGap = officialProperties.getCache().getSortGap();
     }
 
@@ -326,10 +336,94 @@ public class CaseServiceImpl implements CaseService {
             log.warn("portal case detail not found caseId={}", id);
             throw new BusinessException(ErrorCode.CASE_NOT_FOUND);
         }
-        PortalCaseDetailVO detail = caseConverter.toPortalDetailVO(entity);
-        detail.setRelatedProducts(listRelatedProducts(entity.getId()));
-        detail.setRecommendedCases(listRecommendedCases(entity.getId()));
+        CaseVersionEntity publishedVersion = caseVersionMapper.selectOne(
+                new LambdaQueryWrapper<CaseVersionEntity>()
+                        .eq(CaseVersionEntity::getCaseId, id)
+                        .orderByDesc(CaseVersionEntity::getVersionNo)
+                        .last("LIMIT 1"));
+        if (publishedVersion == null || publishedVersion.getSnapshotJson() == null) {
+            log.warn("portal case detail has no published snapshot caseId={}", id);
+            throw new BusinessException(ErrorCode.CASE_NOT_FOUND);
+        }
+        try {
+            return toPortalDetailFromSnapshot(id, publishedVersion, objectMapper.readTree(publishedVersion.getSnapshotJson()));
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.error("portal case detail snapshot is invalid caseId={} versionId={}", id, publishedVersion.getId(), exception);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "案例发布快照格式无效");
+        }
+    }
+
+    /** Portal 详情仅由已发布快照组装，传统案例实体只承担可见性和状态门禁。 */
+    private PortalCaseDetailVO toPortalDetailFromSnapshot(Long caseId, CaseVersionEntity version, JsonNode snapshot) {
+        PortalCaseDetailVO detail = new PortalCaseDetailVO();
+        detail.setId(caseId);
+        detail.setTitle(snapshotText(snapshot, "title"));
+        detail.setCustomerName(snapshotText(snapshot, "customerName"));
+        detail.setIndustry(snapshotText(snapshot, "industry"));
+        detail.setBackground(snapshotText(snapshot, "background"));
+        detail.setSolution(snapshotText(snapshot, "solution"));
+        detail.setResult(snapshotText(snapshot, "result"));
+        detail.setContent(snapshotText(snapshot, "content", "richText", "body"));
+        detail.setCoverMediaId(snapshotLong(snapshot, "coverMediaId", "logoMediaId"));
+        detail.setCoverUrl(snapshotText(snapshot, "coverUrl", "logoUrl"));
+        detail.setImages(snapshotStrings(snapshot, "images", "imageUrls"));
+        JsonNode seo = snapshot.path("seo");
+        detail.setSeoTitle(snapshotText(seo, "title", "seoTitle"));
+        detail.setSeoDescription(snapshotText(seo, "description", "seoDescription"));
+        detail.setStatus(STATUS_PUBLISHED);
+        detail.setRelatedProducts(listPublishedProductsByIds(snapshotIds(snapshot, "productIds", "relatedProductIds"), RECOMMENDATION_LIMIT)
+                .stream().map(productConverter::toPortalVO).toList());
+        detail.setRecommendedCases(listPublishedCasesByIds(snapshotIds(snapshot, "recommendedCaseIds", "caseIds"), RECOMMENDATION_LIMIT)
+                .stream().map(caseConverter::toPortalVO).toList());
         return detail;
+    }
+
+    private String snapshotText(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && value.isTextual()) {
+                return value.asText();
+            }
+        }
+        return "";
+    }
+
+    private Long snapshotLong(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && value.canConvertToLong()) {
+                return value.asLong();
+            }
+        }
+        return null;
+    }
+
+    private List<Long> snapshotIds(JsonNode snapshot, String... names) {
+        for (String name : names) {
+            JsonNode ids = snapshot.get(name);
+            if (ids != null && ids.isArray()) {
+                return java.util.stream.StreamSupport.stream(ids.spliterator(), false)
+                        .filter(JsonNode::canConvertToLong)
+                        .map(JsonNode::asLong)
+                        .toList();
+            }
+        }
+        return List.of();
+    }
+
+    private List<String> snapshotStrings(JsonNode snapshot, String... names) {
+        for (String name : names) {
+            JsonNode values = snapshot.get(name);
+            if (values != null && values.isArray()) {
+                return java.util.stream.StreamSupport.stream(values.spliterator(), false)
+                        .filter(JsonNode::isTextual)
+                        .map(JsonNode::asText)
+                        .toList();
+            }
+        }
+        return List.of();
     }
 
     private List<PortalProductVO> listRelatedProducts(Long caseId) {

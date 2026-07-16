@@ -20,7 +20,7 @@ public interface CaseEditorService {
 
     CaseDraftVO saveDraft(Long caseId, DetailDraftSaveDTO saveDTO, String lockToken, String operator);
 
-    String createPreviewToken(Long caseId, String lockToken, String operator);
+    String createPreviewToken(Long caseId, String draftHash, String lockToken, String operator);
 
     Object renderPreview(Long caseId, String previewToken, String operator);
 

@@ -7,12 +7,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
+import com.company.officialwebsite.common.enums.EditorResourceTypeEnum;
 import com.company.officialwebsite.common.enums.ErrorCode;
+import com.company.officialwebsite.common.vo.LockStatusVO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
 import com.company.officialwebsite.modules.pagebuilder.model.LayoutModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
+import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.support.BaseAdminControllerIntegrationTest;
 import com.company.officialwebsite.support.TestConstants;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +47,9 @@ class AdminPageDraftControllerTest extends BaseAdminControllerIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private EditorLockService editorLockService;
 
     @BeforeEach
     void insertMockMedia() {
@@ -109,6 +115,10 @@ class AdminPageDraftControllerTest extends BaseAdminControllerIntegrationTest {
 
         int draftVersion = objectMapper.readTree(getDraftResponse).path("data").path("version").asInt();
 
+        // 2.5 获取页面独占编辑锁（S2/S3 安全约束：保存草稿必须持锁并携带 X-Editor-Lock-Token）
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+
         // 3. 保存草稿
         PageSchemaModel schema = new PageSchemaModel();
         schema.setPageKey("contact-page");
@@ -137,6 +147,7 @@ class AdminPageDraftControllerTest extends BaseAdminControllerIntegrationTest {
         mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
                         .session(session)
                         .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(saveDTO)))
                 .andExpect(status().isOk())
@@ -145,4 +156,3 @@ class AdminPageDraftControllerTest extends BaseAdminControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.schemaJson.sections[0].id").value("hero_section"));
     }
 }
-

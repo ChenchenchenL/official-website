@@ -146,7 +146,7 @@ class ValueCardControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":999,"iconMediaId":%d,"title":"并发卡片-新版","subtitle":"副标语更新","description":"描述更新。","visible":true}
                                 """.formatted(iconId)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -221,7 +221,7 @@ class ValueCardControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"orderedValueCardIds":[%d]}
                                 """.formatted(id1)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

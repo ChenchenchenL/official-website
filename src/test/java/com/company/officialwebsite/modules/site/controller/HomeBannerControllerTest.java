@@ -272,7 +272,7 @@ class HomeBannerControllerTest extends BaseAdminControllerIntegrationTest {
                                 null,
                                 null,
                                 false)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

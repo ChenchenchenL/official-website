@@ -114,7 +114,7 @@ class ContactInfoControllerTest extends BaseAdminControllerIntegrationTest {
                                 {"version":999,"contactAddress":"北京市朝阳区建国路1号",
                                  "businessPhone":"+86 010-66665555","contactEmail":"bj@example.com"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

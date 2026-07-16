@@ -176,7 +176,7 @@ class NavigationMenuControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"parentId":%d,"orderedMenuIds":[%d]}
                                 """.formatted(rootId, childOne)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

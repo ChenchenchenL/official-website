@@ -339,7 +339,7 @@ class LeadControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":999,"status":1}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

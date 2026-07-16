@@ -153,7 +153,7 @@ class SiteConfigControllerTest extends BaseAdminControllerIntegrationTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(buildConfigJson(0, "第二次保存", "key", "desc", "主张", "副标语", mediaId, mediaId)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

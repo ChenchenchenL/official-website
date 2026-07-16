@@ -154,7 +154,7 @@ class HomeMetricCardControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":0,"value":"13","unit":"+年","description":"再次更新"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -218,7 +218,7 @@ class HomeMetricCardControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"orderedMetricIds":[%d]}
                                 """.formatted(firstId)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

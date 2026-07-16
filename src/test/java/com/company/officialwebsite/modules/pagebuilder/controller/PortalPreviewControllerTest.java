@@ -10,7 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
+import com.company.officialwebsite.common.enums.EditorResourceTypeEnum;
 import com.company.officialwebsite.common.enums.ErrorCode;
+import com.company.officialwebsite.common.vo.LockStatusVO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PreviewCreateDTO;
@@ -18,6 +20,7 @@ import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
 import com.company.officialwebsite.modules.pagebuilder.model.LayoutModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
+import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.support.BaseAdminControllerIntegrationTest;
 import com.company.officialwebsite.support.TestConstants;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,17 +58,18 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private EditorLockService editorLockService;
+
     private static final String PAGE_KEY = "preview-test-page";
 
     @BeforeEach
     void setup() {
-        // 清理测试数据
         jdbcTemplate.execute("DELETE FROM cms_page_dependency WHERE page_id IN (SELECT id FROM cms_page_definition WHERE page_key = '" + PAGE_KEY + "')");
         jdbcTemplate.execute("DELETE FROM cms_page_publish_snapshot WHERE page_id IN (SELECT id FROM cms_page_definition WHERE page_key = '" + PAGE_KEY + "')");
         jdbcTemplate.execute("DELETE FROM cms_page_version WHERE page_id IN (SELECT id FROM cms_page_definition WHERE page_key = '" + PAGE_KEY + "')");
         jdbcTemplate.execute("DELETE FROM cms_page_draft WHERE page_id IN (SELECT id FROM cms_page_definition WHERE page_key = '" + PAGE_KEY + "')");
         jdbcTemplate.execute("DELETE FROM cms_page_definition WHERE page_key = '" + PAGE_KEY + "'");
-        // 清理可能残留的预览 Token
         Set<String> previewKeys = redisTemplate.keys("official:admin:page-preview:*");
         if (previewKeys != null && !previewKeys.isEmpty()) {
             redisTemplate.delete(previewKeys);
@@ -74,19 +78,23 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
 
     // -----------------------------------------------------------------------
     // [安全门禁] 无效/不存在/篡改 Token 必须被拦截，返回 401
+    // 注：portal preview GET 要求管理员身份，需携带 session 才能到达 Token 校验层
     // -----------------------------------------------------------------------
 
     @Test
     void getPreview_shouldReturn401_whenTokenNotExist() throws Exception {
-        mockMvc.perform(get("/portal/api/page-builder/previews/nonexistent-token-uuid"))
+        MockHttpSession session = loginAsAdmin();
+        mockMvc.perform(get("/portal/api/page-builder/previews/nonexistent-token-uuid")
+                        .session(session))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED.getCode()));
     }
 
     @Test
     void getPreview_shouldReturn401_whenTokenIsBlank() throws Exception {
-        // 路径参数为空白字符串会被路由为不匹配（404），测试传入极短无效 token
-        mockMvc.perform(get("/portal/api/page-builder/previews/x"))
+        MockHttpSession session = loginAsAdmin();
+        mockMvc.perform(get("/portal/api/page-builder/previews/x")
+                        .session(session))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED.getCode()));
     }
@@ -94,19 +102,23 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void getPreview_shouldReturn401_afterTokenRevoked() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraft(session);
 
-        // 生成 Token
-        String token = createPreviewToken(session, pageId);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        String schemaHash = saveDraft(session, pageId, lock.getLockToken(), false);
+        String token = createPreviewToken(session, pageId, lock.getLockToken(), schemaHash);
 
         // 撤销 Token
         mockMvc.perform(delete("/admin/api/page-builder/previews/" + token)
                         .session(session)
-                        .with(csrf()))
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken()))
                 .andExpect(status().isOk());
 
         // 撤销后访问必须 401
-        mockMvc.perform(get("/portal/api/page-builder/previews/" + token))
+        mockMvc.perform(get("/portal/api/page-builder/previews/" + token)
+                        .session(session))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_PREVIEW_TOKEN_EXPIRED.getCode()));
     }
@@ -129,17 +141,19 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void getPreview_shouldNotContainBinding_inResponse() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraftWithBinding(session);
-        String token = createPreviewToken(session, pageId);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        String schemaHash = saveDraft(session, pageId, lock.getLockToken(), true);
+        String token = createPreviewToken(session, pageId, lock.getLockToken(), schemaHash);
 
-        String responseBody = mockMvc.perform(get("/portal/api/page-builder/previews/" + token))
+        String responseBody = mockMvc.perform(get("/portal/api/page-builder/previews/" + token)
+                        .session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
                 .andReturn().getResponse().getContentAsString();
 
-        // 验收标准：响应体中 binding 关键字出现次数必须为 0
         assertThat(responseBody).doesNotContain("\"binding\"");
-        // schemaJson 也不应出现（不是 PagePreviewVO 结构，而是 PortalPageVO 结构）
         assertThat(responseBody).doesNotContain("\"schemaJson\"");
     }
 
@@ -150,10 +164,14 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void getPreview_shouldHaveCacheControlNoStore() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraft(session);
-        String token = createPreviewToken(session, pageId);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        String schemaHash = saveDraft(session, pageId, lock.getLockToken(), false);
+        String token = createPreviewToken(session, pageId, lock.getLockToken(), schemaHash);
 
-        mockMvc.perform(get("/portal/api/page-builder/previews/" + token))
+        mockMvc.perform(get("/portal/api/page-builder/previews/" + token)
+                        .session(session))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"));
     }
@@ -165,20 +183,21 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void getPreview_shouldNotPolluteFormalPortalCache() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraft(session);
-        String token = createPreviewToken(session, pageId);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        String schemaHash = saveDraft(session, pageId, lock.getLockToken(), false);
+        String token = createPreviewToken(session, pageId, lock.getLockToken(), schemaHash);
 
-        // 记录预览前的正式缓存 Key 数量
         Set<String> beforeKeys = redisTemplate.keys("official:portal:page:*");
         int beforeCount = beforeKeys == null ? 0 : beforeKeys.size();
 
-        // 执行多次预览请求
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/portal/api/page-builder/previews/" + token))
+            mockMvc.perform(get("/portal/api/page-builder/previews/" + token)
+                            .session(session))
                     .andExpect(status().isOk());
         }
 
-        // 正式缓存 Key 数量不得增加
         Set<String> afterKeys = redisTemplate.keys("official:portal:page:*");
         int afterCount = afterKeys == null ? 0 : afterKeys.size();
         assertThat(afterCount).isEqualTo(beforeCount);
@@ -201,26 +220,19 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
         MockHttpSession session = loginAsAdmin();
 
         // 创建页面但不保存草稿（Schema 为空）
-        PageDefinitionCreateDTO createDTO = new PageDefinitionCreateDTO();
-        createDTO.setPageKey(PAGE_KEY);
-        createDTO.setName("预览测试页面");
-        createDTO.setRoutePath("/preview-test");
-        createDTO.setPageType("NORMAL");
-        createDTO.setVisible(true);
-        createDTO.setSortOrder(99);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
 
-        String createResp = mockMvc.perform(post("/admin/api/page-builder/pages")
-                        .session(session).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createDTO)))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-
-        long pageId = objectMapper.readTree(createResp).path("data").path("id").asLong();
+        // 传入任意 schemaHash（草稿不存在时锁校验通过但草稿不存在返回 404）
+        PreviewCreateDTO dto = new PreviewCreateDTO();
+        dto.setSchemaHash("placeholder-hash-for-empty-draft");
 
         mockMvc.perform(post("/admin/api/page-builder/drafts/" + pageId + "/previews")
                         .session(session).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_DRAFT_NOT_FOUND.getCode()));
     }
@@ -228,11 +240,19 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void createPreview_shouldReturnTokenAndUrl_whenDraftExists() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraft(session);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        String schemaHash = saveDraft(session, pageId, lock.getLockToken(), false);
+
+        PreviewCreateDTO previewReqDTO = new PreviewCreateDTO();
+        previewReqDTO.setSchemaHash(schemaHash);
 
         String resp = mockMvc.perform(post("/admin/api/page-builder/drafts/" + pageId + "/previews")
                         .session(session).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(previewReqDTO)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.previewToken").isString())
                 .andExpect(jsonPath("$.data.previewUrl").isString())
@@ -241,20 +261,23 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
 
         String token = objectMapper.readTree(resp).path("data").path("previewToken").asText();
         assertThat(token).isNotBlank();
-        // Token 应该是 UUID 格式（含 4 个连字符）
         assertThat(token).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     }
 
     @Test
     void createPreview_shouldReturn400_whenSchemaHashMismatch() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraft(session);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        saveDraft(session, pageId, lock.getLockToken(), false);
 
         PreviewCreateDTO dto = new PreviewCreateDTO();
         dto.setSchemaHash("wrong-hash-value");
 
         mockMvc.perform(post("/admin/api/page-builder/drafts/" + pageId + "/previews")
                         .session(session).with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isBadRequest())
@@ -268,10 +291,14 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     @Test
     void getPreview_shouldRenderDraftWithBindingDataAndNoBindingField() throws Exception {
         MockHttpSession session = loginAsAdmin();
-        long pageId = createPageAndSaveDraftWithBinding(session);
-        String token = createPreviewToken(session, pageId);
+        long pageId = createPage(session);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+        String schemaHash = saveDraft(session, pageId, lock.getLockToken(), true);
+        String token = createPreviewToken(session, pageId, lock.getLockToken(), schemaHash);
 
-        String resp = mockMvc.perform(get("/portal/api/page-builder/previews/" + token))
+        String resp = mockMvc.perform(get("/portal/api/page-builder/previews/" + token)
+                        .session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pageKey").value(PAGE_KEY))
                 .andExpect(jsonPath("$.data.sections").isArray())
@@ -279,9 +306,7 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
 
         JsonNode sections = objectMapper.readTree(resp).path("data").path("sections");
         assertThat(sections.size()).isGreaterThan(0);
-
         for (JsonNode sec : sections) {
-            // 每个 section 不得含有 binding 字段
             assertThat(sec.has("binding")).isFalse();
         }
     }
@@ -290,15 +315,8 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
     // Helpers
     // -----------------------------------------------------------------------
 
-    private long createPageAndSaveDraft(MockHttpSession session) throws Exception {
-        return createPageAndSaveDraftInternal(session, false);
-    }
-
-    private long createPageAndSaveDraftWithBinding(MockHttpSession session) throws Exception {
-        return createPageAndSaveDraftInternal(session, true);
-    }
-
-    private long createPageAndSaveDraftInternal(MockHttpSession session, boolean withBinding) throws Exception {
+    /** 创建页面定义，返回 pageId。不涉及草稿保存和锁操作。 */
+    private long createPage(MockHttpSession session) throws Exception {
         PageDefinitionCreateDTO createDTO = new PageDefinitionCreateDTO();
         createDTO.setPageKey(PAGE_KEY);
         createDTO.setName("预览测试页面");
@@ -314,8 +332,14 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        long pageId = objectMapper.readTree(createResp).path("data").path("id").asLong();
+        return objectMapper.readTree(createResp).path("data").path("id").asLong();
+    }
 
+    /**
+     * 保存草稿，返回服务端计算的 schemaHash（供 createPreviewToken 使用）。
+     * 调用方需事先持有锁并传入 lockToken。
+     */
+    private String saveDraft(MockHttpSession session, long pageId, String lockToken, boolean withBinding) throws Exception {
         PageSchemaModel schema = new PageSchemaModel();
         schema.setPageKey(PAGE_KEY);
         schema.setName("预览测试页面");
@@ -345,19 +369,30 @@ class PortalPreviewControllerTest extends BaseAdminControllerIntegrationTest {
         saveDTO.setEditorSessionRemark("测试草稿");
         saveDTO.setVersion(0);
 
-        mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
+        String resp = mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
                         .session(session).with(csrf())
+                        .header("X-Editor-Lock-Token", lockToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(saveDTO)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
 
-        return pageId;
+        // 从保存响应中提取服务端计算的 schemaHash，后续 createPreview 必须传入一致的哈希
+        return objectMapper.readTree(resp).path("data").path("schemaHash").asText();
     }
 
-    private String createPreviewToken(MockHttpSession session, long pageId) throws Exception {
+    /**
+     * 使用已持有的锁 Token 和草稿哈希创建预览，返回 previewToken。
+     * 调用方需事先持有锁并通过 saveDraft 获得 schemaHash。
+     */
+    private String createPreviewToken(MockHttpSession session, long pageId, String lockToken, String schemaHash) throws Exception {
+        PreviewCreateDTO dto = new PreviewCreateDTO();
+        dto.setSchemaHash(schemaHash);
         String resp = mockMvc.perform(post("/admin/api/page-builder/drafts/" + pageId + "/previews")
                         .session(session).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 

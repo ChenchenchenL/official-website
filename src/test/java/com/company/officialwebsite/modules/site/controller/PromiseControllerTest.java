@@ -111,7 +111,7 @@ class PromiseControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":999,"content":"并发更新文案。"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -181,7 +181,7 @@ class PromiseControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":999,"tagText":"并发标签-新版"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -252,7 +252,7 @@ class PromiseControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"orderedPromiseTagIds":[%d]}
                                 """.formatted(id1)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

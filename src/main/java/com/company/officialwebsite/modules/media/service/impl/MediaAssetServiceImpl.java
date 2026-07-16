@@ -113,7 +113,8 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 
         MediaAssetEntity entity = new MediaAssetEntity();
         entity.setMediaType(mediaType);
-        entity.setStatus(MediaAssetStatusEnum.ACTIVE.getCode());
+        // 上传后初始状态为 TEMPORARY，等待业务侧绑定后由 refreshMediaStatus 迁移为 ACTIVE/BOUND（rules/backend.md §13）
+        entity.setStatus(MediaAssetStatusEnum.TEMPORARY.getCode());
         entity.setOriginalFilename(originalFilename);
         entity.setContentType(file.getContentType());
         entity.setStoragePath(relativePath);
@@ -373,8 +374,24 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         if (MediaAssetStatusEnum.DELETED.getCode().equals(entity.getStatus())) {
             return;
         }
-        entity.setStatus(MediaAssetStatusEnum.ACTIVE.getCode());
-        mediaAssetMapper.updateById(entity);
+        // 根据是否存在活跃引用决定状态：有引用→BOUND，无引用→UNBOUND（曾被绑定过）或 TEMPORARY（从未绑定）
+        long refCount = mediaReferenceMapper.selectCount(new LambdaQueryWrapper<MediaReferenceEntity>()
+                .eq(MediaReferenceEntity::getMediaId, mediaId)
+                .eq(MediaReferenceEntity::getDeletedMarker, 0L));
+        String newStatus;
+        if (refCount > 0) {
+            newStatus = MediaAssetStatusEnum.BOUND.getCode();
+        } else if (MediaAssetStatusEnum.TEMPORARY.getCode().equals(entity.getStatus())) {
+            // 从未被绑定过，保持 TEMPORARY
+            newStatus = MediaAssetStatusEnum.TEMPORARY.getCode();
+        } else {
+            // 曾经被绑定，现在引用全部移除，标记为 UNBOUND
+            newStatus = MediaAssetStatusEnum.UNBOUND.getCode();
+        }
+        if (!newStatus.equals(entity.getStatus())) {
+            entity.setStatus(newStatus);
+            mediaAssetMapper.updateById(entity);
+        }
     }
 
     private MediaAssetEntity requireAsset(Long id) {

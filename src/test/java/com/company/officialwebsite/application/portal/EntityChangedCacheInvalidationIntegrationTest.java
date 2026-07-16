@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
+import com.company.officialwebsite.common.enums.EditorResourceTypeEnum;
+import com.company.officialwebsite.common.vo.LockStatusVO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO;
@@ -15,6 +17,7 @@ import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
 import com.company.officialwebsite.modules.pagebuilder.model.LayoutModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
+import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.support.BaseAdminControllerIntegrationTest;
 import com.company.officialwebsite.support.TestConstants;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -136,6 +139,14 @@ class EntityChangedCacheInvalidationIntegrationTest extends BaseAdminControllerI
                 .andReturn().getResponse().getContentAsString();
         int draftVersion = objectMapper.readTree(draftResponse).path("data").path("version").asInt();
 
+        // 获取页面独占编辑锁（S2/S3：保存草稿与发布均需持锁携带 X-Editor-Lock-Token）
+        String lockResponse = mockMvc.perform(post("/admin/api/page-builder/pages/{pageId}/lock", pageId)
+                        .session(session)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andReturn().getResponse().getContentAsString();
+        String lockToken = objectMapper.readTree(lockResponse).path("data").path("lockToken").asText();
+
         // 保存草稿
         PageDraftSaveDTO saveDTO = new PageDraftSaveDTO();
         saveDTO.setSchemaJson(schema);
@@ -144,16 +155,19 @@ class EntityChangedCacheInvalidationIntegrationTest extends BaseAdminControllerI
         mockMvc.perform(put("/admin/api/page-builder/drafts/{pageId}", pageId)
                 .session(session)
                 .with(csrf())
+                .header("X-Editor-Lock-Token", lockToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(saveDTO)));
 
         // 3. 发布页面（写入依赖关系到 cms_page_dependency）
         PagePublishDTO publishDTO = new PagePublishDTO();
         publishDTO.setChangeSummary("集成测试发布");
+        publishDTO.setVersion(draftVersion + 1);
 
         mockMvc.perform(post("/admin/api/page-builder/pages/{pageId}/publish", pageId)
                 .session(session)
                 .with(csrf())
+                .header("X-Editor-Lock-Token", lockToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(publishDTO)));
 

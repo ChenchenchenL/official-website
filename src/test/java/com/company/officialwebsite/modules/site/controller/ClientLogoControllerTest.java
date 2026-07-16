@@ -202,7 +202,7 @@ class ClientLogoControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 [{"id":%d,"sortOrder":1}]
                                 """.formatted(first)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

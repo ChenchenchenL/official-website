@@ -290,7 +290,7 @@ class ProductControllerTest extends BaseAdminControllerIntegrationTest {
                                   "visible": 1
                                 }
                                 """.formatted(logoId)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

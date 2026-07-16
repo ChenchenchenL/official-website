@@ -212,7 +212,7 @@ class IndustrySolutionControllerTest extends BaseAdminControllerIntegrationTest 
                                   "visible": true
                                 }
                                 """.formatted(iconId)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

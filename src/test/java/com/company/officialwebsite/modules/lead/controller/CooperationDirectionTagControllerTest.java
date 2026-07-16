@@ -251,7 +251,7 @@ class CooperationDirectionTagControllerTest extends BaseAdminControllerIntegrati
                         .content("""
                                 {"version":999,"tagText":"并发标签-新版"}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -337,7 +337,7 @@ class CooperationDirectionTagControllerTest extends BaseAdminControllerIntegrati
                         .content("""
                                 {"orderedCooperationDirectionTagIds":[%d]}
                                 """.formatted(idA)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

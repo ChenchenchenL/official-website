@@ -7,7 +7,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
+import com.company.officialwebsite.common.enums.EditorResourceTypeEnum;
 import com.company.officialwebsite.common.enums.ErrorCode;
+import com.company.officialwebsite.common.vo.LockStatusVO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO;
@@ -15,6 +17,7 @@ import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
 import com.company.officialwebsite.modules.pagebuilder.model.LayoutModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
+import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.support.BaseAdminControllerIntegrationTest;
 import com.company.officialwebsite.support.TestConstants;
@@ -48,6 +51,9 @@ class PortalPageRenderControllerTest extends BaseAdminControllerIntegrationTest 
 
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private EditorLockService editorLockService;
 
     @BeforeEach
     void clearCacheAndDatabase() {
@@ -100,11 +106,15 @@ class PortalPageRenderControllerTest extends BaseAdminControllerIntegrationTest 
 
         long pageId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
 
-        // 2. 保存草稿（添加一个绑定 site_config 数据源的区块）
+        // 2. 获取编辑锁（S2/S3：草稿保存、发布均需持锁并携带 X-Editor-Lock-Token）
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+
+        // 3. 保存草稿（添加一个绑定 site_config 数据源的区块）
         PageSchemaModel schema = new PageSchemaModel();
         schema.setPageKey("careers-page");
         schema.setName("招贤纳士页面");
-        
+
         LayoutModel layout = new LayoutModel();
         layout.setType("horizontal");
         schema.setLayout(layout);
@@ -119,7 +129,7 @@ class PortalPageRenderControllerTest extends BaseAdminControllerIntegrationTest 
 
         BindingModel binding = new BindingModel();
         binding.setMode("ENTITY");
-        binding.setSource("site_config"); // 绑定站点全局配置
+        binding.setSource("site_config");
         section.setBinding(binding);
 
         schema.setSections(Collections.singletonList(section));
@@ -132,28 +142,31 @@ class PortalPageRenderControllerTest extends BaseAdminControllerIntegrationTest 
         mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
                         .session(session)
                         .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(saveDTO)))
                 .andExpect(status().isOk());
 
-        // 3. 此时未发布，前台直接查询应该返回 404
+        // 4. 此时未发布，前台直接查询应该返回 404
         mockMvc.perform(get("/portal/api/page-builder/pages")
                         .param("routePath", "/careers"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_NOT_FOUND.getCode()));
 
-        // 4. 发布草稿
+        // 5. 发布草稿（携带锁 Token，version=1 为 saveDraft 后的草稿版本号）
         PagePublishDTO publishDTO = new PagePublishDTO();
         publishDTO.setChangeSummary("发布招聘页面");
+        publishDTO.setVersion(1);
 
         mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/publish")
                         .session(session)
                         .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(publishDTO)))
                 .andExpect(status().isOk());
 
-        // 5. 发布后前台直接渲染（免密，且应该成功装配 site_config 绑定数据）
+        // 6. 发布后前台直接渲染（免密，且应该成功装配 site_config 绑定数据）
         mockMvc.perform(get("/portal/api/page-builder/pages")
                         .param("routePath", "/careers"))
                 .andExpect(status().isOk())
@@ -162,12 +175,12 @@ class PortalPageRenderControllerTest extends BaseAdminControllerIntegrationTest 
                 .andExpect(jsonPath("$.data.sections[0].bindingData").exists())
                 .andExpect(jsonPath("$.data.sections[0].bindingData.siteTitle").isString());
 
-        // 6. 前台获取元数据页面信息
+        // 7. 前台获取元数据页面信息
         mockMvc.perform(get("/portal/api/page-builder/pages/careers-page/meta"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
                 .andExpect(jsonPath("$.data.pageKey").value("careers-page"))
                 .andExpect(jsonPath("$.data.layout.type").value("horizontal"))
-                .andExpect(jsonPath("$.data.sections").doesNotExist()); // 确保元数据接口不泄漏 sections 信息
+                .andExpect(jsonPath("$.data.sections").doesNotExist());
     }
 }

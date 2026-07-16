@@ -169,7 +169,7 @@ class TimelineEventControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":999,"year":2023,"title":"并发事件-新版","description":"并发测试。","visible":true}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -255,7 +255,7 @@ class TimelineEventControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"orderedTimelineEventIds":[%d]}
                                 """.formatted(id1)))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

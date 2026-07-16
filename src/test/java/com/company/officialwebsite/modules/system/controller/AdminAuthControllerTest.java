@@ -140,6 +140,6 @@ class AdminAuthControllerTest {
 
         mockMvc.perform(post("/admin/api/auth/logout").session(session))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(20005));
+                .andExpect(jsonPath("$.code").value(20006));
     }
 }

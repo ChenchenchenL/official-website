@@ -207,7 +207,7 @@ class HonorControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"orderedHonorIds":[-9201,-9202]}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

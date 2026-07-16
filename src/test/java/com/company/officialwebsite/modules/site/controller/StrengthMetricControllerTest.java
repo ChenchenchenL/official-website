@@ -287,7 +287,7 @@ class StrengthMetricControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"version":99,"metricValue":"50+","label":"版本冲突测试","visible":true}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 
@@ -391,7 +391,7 @@ class StrengthMetricControllerTest extends BaseAdminControllerIntegrationTest {
                         .content("""
                                 {"orderedMetricIds":[-9401,-9402]}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

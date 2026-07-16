@@ -198,7 +198,7 @@ class CapabilityControllerTest extends BaseAdminControllerIntegrationTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\": 99, \"name\":\"全域数据智能(更新)\", \"visible\":true}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(TestConstants.STATE_CONFLICT));
     }
 

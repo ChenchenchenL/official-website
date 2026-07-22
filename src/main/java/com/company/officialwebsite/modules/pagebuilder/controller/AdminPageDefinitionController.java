@@ -4,6 +4,9 @@ import com.company.officialwebsite.common.response.ApiResponse;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionUpdateDTO;
 import com.company.officialwebsite.modules.pagebuilder.service.PageDefinitionService;
+import com.company.officialwebsite.modules.pagebuilder.service.PageDependencyQueryService;
+import com.company.officialwebsite.modules.pagebuilder.vo.PageDependencyVO;
+import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageDefinitionVO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -34,9 +37,13 @@ public class AdminPageDefinitionController {
     private static final Logger log = LoggerFactory.getLogger(AdminPageDefinitionController.class);
 
     private final PageDefinitionService pageDefinitionService;
+    private final PageDependencyQueryService pageDependencyQueryService;
 
-    public AdminPageDefinitionController(PageDefinitionService pageDefinitionService) {
+    public AdminPageDefinitionController(
+            PageDefinitionService pageDefinitionService,
+            PageDependencyQueryService pageDependencyQueryService) {
         this.pageDefinitionService = pageDefinitionService;
+        this.pageDependencyQueryService = pageDependencyQueryService;
     }
 
     /**
@@ -57,6 +64,19 @@ public class AdminPageDefinitionController {
     public ApiResponse<PageDefinitionVO> getPageDetail(@PathVariable Long id) {
         log.info("Admin request: get page detail id={}", id);
         return ApiResponse.success(pageDefinitionService.getPageDetail(id));
+    }
+
+    /**
+     * 查询当前已发布页面的媒体、实体和聚合数据源依赖，供上线前排障与引用治理使用。
+     */
+    @GetMapping("/{id}/dependencies")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<PageResult<PageDependencyVO>> getPublishedDependencies(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int pageNo,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        log.info("Admin request: get published page dependencies id={} pageNo={} pageSize={}", id, pageNo, pageSize);
+        return ApiResponse.success(pageDependencyQueryService.getPublishedDependencies(id, pageNo, pageSize));
     }
 
     /**
@@ -91,5 +111,29 @@ public class AdminPageDefinitionController {
             @RequestParam("version") @PositiveOrZero(message = "版本号不能为负数") Integer version) {
         log.info("Admin request: delete page id={}, version={}", id, version);
         return ApiResponse.success(pageDefinitionService.deletePage(id, version));
+    }
+
+    /**
+     * 显式启用指定的页面定义。
+     */
+    @PostMapping("/{id}/enable")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<PageDefinitionVO> enablePage(
+            @PathVariable Long id,
+            @RequestParam("version") @PositiveOrZero(message = "版本号不能为负数") Integer version) {
+        log.info("Admin request: enable page id={}, version={}", id, version);
+        return ApiResponse.success(pageDefinitionService.enablePage(id, version));
+    }
+
+    /**
+     * 显式停用指定的页面定义。
+     */
+    @PostMapping("/{id}/disable")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<PageDefinitionVO> disablePage(
+            @PathVariable Long id,
+            @RequestParam("version") @PositiveOrZero(message = "版本号不能为负数") Integer version) {
+        log.info("Admin request: disable page id={}, version={}", id, version);
+        return ApiResponse.success(pageDefinitionService.disablePage(id, version));
     }
 }

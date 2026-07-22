@@ -8,11 +8,13 @@ import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.pagebuilder.constants.PageBuilderConstants;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
+import com.company.officialwebsite.modules.pagebuilder.service.PageDefinitionService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageDraftService;
 import com.company.officialwebsite.modules.pagebuilder.service.PortalPageRenderService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageDraftVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageMetaVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageVO;
+import com.company.officialwebsite.modules.pagebuilder.vo.PortalRouteVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalSectionVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,16 +36,19 @@ public class PageRenderApplicationServiceImpl implements PageRenderApplicationSe
     private final PageBindingResolutionService bindingResolutionService;
     private final PortalCacheSupport portalCacheSupport;
     private final PageDraftService pageDraftService;
+    private final PageDefinitionService pageDefinitionService;
 
     public PageRenderApplicationServiceImpl(
             PortalPageRenderService portalPageRenderService,
             PageBindingResolutionService bindingResolutionService,
             PortalCacheSupport portalCacheSupport,
-            PageDraftService pageDraftService) {
+            PageDraftService pageDraftService,
+            PageDefinitionService pageDefinitionService) {
         this.portalPageRenderService = portalPageRenderService;
         this.bindingResolutionService = bindingResolutionService;
         this.portalCacheSupport = portalCacheSupport;
         this.pageDraftService = pageDraftService;
+        this.pageDefinitionService = pageDefinitionService;
     }
 
     @Override
@@ -141,6 +146,12 @@ public class PageRenderApplicationServiceImpl implements PageRenderApplicationSe
 
         log.info("renderDraftForPreview completed pageId={} sections={}", pageId, sections.size());
         return vo;
+    }
+
+    @Override
+    public List<PortalRouteVO> listActiveRoutes(Boolean onlyVisible) {
+        log.info("listActiveRoutes onlyVisible={}", onlyVisible);
+        return pageDefinitionService.listActiveRoutes(onlyVisible);
     }
 
     /**

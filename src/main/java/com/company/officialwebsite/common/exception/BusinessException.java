@@ -8,10 +8,12 @@ import com.company.officialwebsite.common.enums.ErrorCode;
 public class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
+    private final Object data;
 
     public BusinessException(ErrorCode errorCode) {
         super(errorCode.getDefaultMessage());
         this.errorCode = errorCode;
+        this.data = null;
     }
 
     /**
@@ -20,6 +22,16 @@ public class BusinessException extends RuntimeException {
     public BusinessException(ErrorCode errorCode, String message) {
         super(message);
         this.errorCode = errorCode;
+        this.data = null;
+    }
+
+    /**
+     * 支持在业务异常中携带恢复元数据（例如保存冲突时的最新草稿 VO）。
+     */
+    public BusinessException(ErrorCode errorCode, String message, Object data) {
+        super(message);
+        this.errorCode = errorCode;
+        this.data = data;
     }
 
     /**
@@ -28,9 +40,14 @@ public class BusinessException extends RuntimeException {
     public BusinessException(ErrorCode errorCode, String message, Throwable cause) {
         super(message, cause);
         this.errorCode = errorCode;
+        this.data = null;
     }
 
     public ErrorCode getErrorCode() {
         return errorCode;
+    }
+
+    public Object getData() {
+        return data;
     }
 }

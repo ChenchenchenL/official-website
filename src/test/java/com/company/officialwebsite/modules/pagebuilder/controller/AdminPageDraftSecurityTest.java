@@ -90,4 +90,76 @@ class AdminPageDraftSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
     }
+
+    @Test
+    @DisplayName("保存草稿版本冲突时返回 409 且携带最新草稿数据 payload")
+    void saveDraft_versionConflict_shouldReturn409WithDraftData() throws Exception {
+        PageDefinitionEntity page = new PageDefinitionEntity();
+        page.setPageKey("conflict_page_1");
+        page.setName("冲突测试页面");
+        page.setRoutePath("/conflict-page-1");
+        page.setPageType("NORMAL");
+        page.setStatus("ENABLED");
+        page.setVisible(true);
+        page.setSortOrder(1);
+        pageDefinitionMapper.insert(page);
+
+        PageSchemaModel schema = new PageSchemaModel();
+        schema.setPageKey("conflict_page_1");
+        schema.setName("冲突测试页面");
+
+        PageDraftEntity draft = new PageDraftEntity();
+        draft.setPageId(page.getId());
+        draft.setSchemaJson(schema);
+        draft.setSchemaHash("hash_ver_0");
+        draft.setVersion(5); // DB 中当前草稿版本为 5
+        pageDraftMapper.insert(draft);
+
+        LockStatusVO lock = editorLockService.acquireLock(EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_cf", "编辑员", false);
+
+        // 请求中传入过期版本 2
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + page.getId())
+                        .with(csrf())
+                        .with(user("admin_cf").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":2,\"schemaJson\":{\"pageKey\":\"conflict_page_1\",\"name\":\"冲突测试页面\",\"layout\":{\"type\":\"default\"},\"sections\":[]}}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(10003))
+                .andExpect(jsonPath("$.data.version").value(5))
+                .andExpect(jsonPath("$.data.schemaHash").value("hash_ver_0"));
+    }
+
+    @Test
+    @DisplayName("缺少 X-Editor-Lock-Token Header 时重置草稿返回 400 Bad Request")
+    void resetDraftToPublished_missingLockHeader_shouldReturn400() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/admin/api/page-builder/drafts/1/reset-to-published")
+                        .with(csrf())
+                        .with(user("admin").roles("ADMINISTRATOR")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(10011));
+    }
+
+    @Test
+    @DisplayName("错误锁 Token 重置草稿返回 403 Forbidden")
+    void resetDraftToPublished_wrongLockToken_shouldReturn403() throws Exception {
+        PageDefinitionEntity page = new PageDefinitionEntity();
+        page.setPageKey("reset_lock_test");
+        page.setName("锁重置测试");
+        page.setRoutePath("/reset-lock-test");
+        page.setPageType("NORMAL");
+        page.setStatus("ENABLED");
+        page.setVisible(true);
+        page.setSortOrder(1);
+        pageDefinitionMapper.insert(page);
+
+        editorLockService.acquireLock(EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_owner", "管理员", false);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/admin/api/page-builder/drafts/" + page.getId() + "/reset-to-published")
+                        .with(csrf())
+                        .with(user("admin_owner").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", "invalid_lock_token_999"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(10009));
+    }
 }

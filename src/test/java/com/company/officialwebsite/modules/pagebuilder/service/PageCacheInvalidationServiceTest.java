@@ -193,17 +193,50 @@ class PageCacheInvalidationServiceTest {
     }
 
     /**
-     * 当路由查询结果为空时（依赖记录孤立），不应调用 invalidate，仅记录 warn。
+     * 当路由发生变更时，应当同时清理旧路由与新路由的 Portal 缓存。
      */
     @Test
-    void invalidateCacheByTarget_shouldSkip_whenRouteProjectionEmpty() {
-        when(pageDependencyMapper.selectPageIdsByTarget(anyString(), anyString(), anyString()))
-                .thenReturn(List.of(99L));
+    void invalidatePageCaches_shouldInvalidateBothOldAndNewRoutes_whenRouteChangeOccurs() {
+        PageRouteProjection p = new PageRouteProjection();
+        p.setId(1L);
+        p.setPageKey("about-key");
+        p.setRoutePath("/about-new");
+
         when(pageDefinitionMapper.selectRoutesByPageIds(any()))
-                .thenReturn(Collections.emptyList());
+                .thenReturn(List.of(p));
 
-        service.invalidateCacheByTarget("media", "MediaAsset", "999");
+        service.invalidatePageCaches(1L, "/about-old", "/about-new");
 
-        verify(portalCacheSupport, never()).invalidate(any(String[].class));
+        ArgumentCaptor<String[]> keysCaptor = ArgumentCaptor.forClass(String[].class);
+        verify(portalCacheSupport).invalidate(keysCaptor.capture());
+
+        String[] actualKeys = keysCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertTrue(Arrays.asList(actualKeys).contains(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/about-old"));
+        org.junit.jupiter.api.Assertions.assertTrue(Arrays.asList(actualKeys).contains(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/about-new"));
+        org.junit.jupiter.api.Assertions.assertTrue(Arrays.asList(actualKeys).contains(PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "about-key"));
+    }
+
+    /**
+     * 当路由未变更时，正确触发单一路由和元数据缓存清理。
+     */
+    @Test
+    void invalidatePageCaches_shouldInvalidateSingleRoute_whenNoRouteChange() {
+        PageRouteProjection p = new PageRouteProjection();
+        p.setId(2L);
+        p.setPageKey("contact-key");
+        p.setRoutePath("/contact");
+
+        when(pageDefinitionMapper.selectRoutesByPageIds(any()))
+                .thenReturn(List.of(p));
+
+        service.invalidatePageCaches(2L, "/contact", "/contact");
+
+        ArgumentCaptor<String[]> keysCaptor = ArgumentCaptor.forClass(String[].class);
+        verify(portalCacheSupport).invalidate(keysCaptor.capture());
+
+        String[] actualKeys = keysCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals(2, actualKeys.length);
+        org.junit.jupiter.api.Assertions.assertEquals(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + "/contact", actualKeys[0]);
+        org.junit.jupiter.api.Assertions.assertEquals(PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + "contact-key", actualKeys[1]);
     }
 }

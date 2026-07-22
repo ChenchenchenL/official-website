@@ -43,6 +43,9 @@ class AdminPagePublishSecurityTest {
     private PageDraftMapper pageDraftMapper;
 
     @Autowired
+    private com.company.officialwebsite.modules.pagebuilder.mapper.PageVersionMapper pageVersionMapper;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     // -----------------------------------------------------------------------
@@ -204,6 +207,18 @@ class AdminPagePublishSecurityTest {
 
         long versionId = objectMapper.readTree(pubResp).path("data").path("id").asLong();
 
+        // 发布一份新草稿，使首版成为可回滚的历史版本。
+        draft.setSchemaHash("hash_rb_002");
+        pageDraftMapper.updateById(draft);
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + page.getId() + "/publish")
+                        .with(csrf())
+                        .with(user("admin_rb").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"changeSummary\":\"第二次发布\",\"version\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.versionNo").value(2));
+
         // 重新加锁（发布后草稿版本已更新，需重新获取锁）
         LockStatusVO lock2 = editorLockService.acquireLock(
                 EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_rb", "回滚员", false);
@@ -244,5 +259,88 @@ class AdminPagePublishSecurityTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\":0,\"changeSummary\":\"缺versionId\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("发布携带的 schemaHash 与服务端不一致返回 409")
+    void publish_schemaHashMismatch_shouldReturn409() throws Exception {
+        PageDefinitionEntity page = createPage("pub_hash_mismatch");
+        PageDraftEntity draft = createDraft(page.getId(), "server_hash_123");
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_hm", "管理员", false);
+
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + page.getId() + "/publish")
+                        .with(csrf())
+                        .with(user("admin_hm").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"changeSummary\":\"哈希不符发布\",\"version\":" + draft.getVersion() + ",\"schemaHash\":\"wrong_hash_xyz\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.COMMON_STATE_CONFLICT.getCode()));
+    }
+
+    @Test
+    @DisplayName("回滚时 expectedSnapshotId 与当前在线快照不匹配返回 409")
+    void rollback_expectedSnapshotIdMismatch_shouldReturn409() throws Exception {
+        PageDefinitionEntity page = createPage("rb_snap_mismatch");
+        PageDraftEntity draft = createDraft(page.getId(), "rb_hash_snap");
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_sm", "管理员", false);
+
+        // 先发布一次生成在线快照
+        String pubResp = mockMvc.perform(post("/admin/api/page-builder/pages/" + page.getId() + "/publish")
+                        .with(csrf())
+                        .with(user("admin_sm").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"changeSummary\":\"初始发布\",\"version\":" + draft.getVersion() + "}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        long versionId = objectMapper.readTree(pubResp).path("data").path("id").asLong();
+
+        LockStatusVO lock2 = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_sm", "管理员", false);
+
+        PageDraftEntity freshDraft = pageDraftMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<PageDraftEntity>()
+                        .eq(PageDraftEntity::getPageId, page.getId()));
+
+        // 传入错误的 expectedSnapshotId 99999L
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + page.getId() + "/rollback")
+                        .with(csrf())
+                        .with(user("admin_sm").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock2.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"versionId\":" + versionId + ",\"version\":" + freshDraft.getVersion() + ",\"expectedSnapshotId\":99999,\"changeSummary\":\"快照不配回滚\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.COMMON_STATE_CONFLICT.getCode()));
+    }
+
+    @Test
+    @DisplayName("页面无在线快照时指定 expectedSnapshotId 返回 409")
+    void rollback_expectedSnapshotIdWhenNoActiveSnapshot_shouldReturn409() throws Exception {
+        PageDefinitionEntity page = createPage("rb_no_active_snap");
+        PageDraftEntity draft = createDraft(page.getId(), "rb_no_active");
+        com.company.officialwebsite.modules.pagebuilder.entity.PageVersionEntity version =
+                new com.company.officialwebsite.modules.pagebuilder.entity.PageVersionEntity();
+        version.setPageId(page.getId());
+        version.setVersionNo(1);
+        version.setSourceType("PUBLISH_BASE");
+        version.setSchemaJson(draft.getSchemaJson());
+        version.setSchemaHash(draft.getSchemaHash());
+        version.setChangeSummary("历史版本");
+        pageVersionMapper.insert(version);
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_nas", "管理员", false);
+
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + page.getId() + "/rollback")
+                        .with(csrf())
+                        .with(user("admin_nas").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"versionId\":" + version.getId() + ",\"version\":" + draft.getVersion() + ",\"expectedSnapshotId\":1001,\"changeSummary\":\"无快照却传expected\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.COMMON_STATE_CONFLICT.getCode()));
     }
 }

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
+import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.infrastructure.cache.PortalCacheSupport;
 import com.company.officialwebsite.modules.pagebuilder.converter.PageVersionConverter;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
@@ -62,6 +63,7 @@ public class PagePublishServiceImpl implements PagePublishService {
     private static final String TARGET_TYPE = "PAGE_SNAPSHOT";
     private static final String ACTION_PUBLISH = "PUBLISH_PAGE";
     private static final String ACTION_ROLLBACK = "ROLLBACK_PAGE";
+    private static final String REMARK_ROLLBACK_RESET_DRAFT = "由于回滚版本同步重置草稿";
 
     private final PageDefinitionMapper pageDefinitionMapper;
     private final PageDraftMapper pageDraftMapper;
@@ -135,6 +137,30 @@ public class PagePublishServiceImpl implements PagePublishService {
 
         // 草稿乐观锁版本校验，防止并发覆盖
         ConcurrencyHelper.assertVersion(draft.getVersion(), dto.getVersion());
+
+        // schemaHash 强校验，防止发布与审阅不匹配的草稿 Schema
+        if (org.springframework.util.StringUtils.hasText(dto.getSchemaHash())
+                && !dto.getSchemaHash().trim().equals(draft.getSchemaHash())) {
+            log.warn("publishPage failed: schemaHash mismatch pageId={} clientHash={} serverHash={}",
+                    pageId, dto.getSchemaHash(), draft.getSchemaHash());
+            throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "草稿内容已被修改，请重新审阅后发布");
+        }
+
+        // 幂等性校验：若当前已有 ACTIVE 快照且其 snapshotHash 与待发布草稿 schemaHash 一致，直接返回当前 ACTIVE 版本
+        PagePublishSnapshotEntity activeSnapshot = pagePublishSnapshotMapper.selectOne(
+                new LambdaQueryWrapper<PagePublishSnapshotEntity>()
+                        .eq(PagePublishSnapshotEntity::getPageId, pageId)
+                        .eq(PagePublishSnapshotEntity::getPublishStatus, PublishSnapshotStatusEnum.ACTIVE.name())
+        );
+        if (activeSnapshot != null && activeSnapshot.getSnapshotHash() != null
+                && activeSnapshot.getSnapshotHash().equals(draft.getSchemaHash())) {
+            log.info("publishPage: idempotent request detected, pageId={} activeSnapshotId={}",
+                    pageId, activeSnapshot.getId());
+            PageVersionEntity currentVersion = pageVersionMapper.selectById(activeSnapshot.getVersionId());
+            if (currentVersion != null) {
+                return pageVersionConverter.toVO(currentVersion);
+            }
+        }
 
         // 强校验所引用的详情实体是否已发布且上线可见
         validateReferencedEntitiesUsable(draft.getSchemaJson());
@@ -213,6 +239,41 @@ public class PagePublishServiceImpl implements PagePublishService {
             ConcurrencyHelper.assertVersion(draft.getVersion(), dto.getVersion());
         }
 
+        // 校验当前在线 ACTIVE 快照与 expected 快照 ID / 版本号是否相符
+        PagePublishSnapshotEntity activeSnapshot = pagePublishSnapshotMapper.selectOne(
+                new LambdaQueryWrapper<PagePublishSnapshotEntity>()
+                        .eq(PagePublishSnapshotEntity::getPageId, pageId)
+                        .eq(PagePublishSnapshotEntity::getPublishStatus, PublishSnapshotStatusEnum.ACTIVE.name())
+        );
+
+        if (dto.getExpectedSnapshotId() != null) {
+            if (activeSnapshot == null || !dto.getExpectedSnapshotId().equals(activeSnapshot.getId())) {
+                log.warn("rollbackPage failed: expectedSnapshotId mismatch pageId={} expected={} active={}",
+                        pageId, dto.getExpectedSnapshotId(), activeSnapshot == null ? null : activeSnapshot.getId());
+                throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "页面在线状态已被其他管理员更新，请刷新后重试");
+            }
+        }
+
+        if (dto.getExpectedPageVersion() != null) {
+            if (activeSnapshot == null) {
+                log.warn("rollbackPage failed: expectedPageVersion specified but activeSnapshot is null, pageId={}", pageId);
+                throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "页面在线版本已被其他管理员更新，请刷新后重试");
+            }
+            PageVersionEntity activeVersion = pageVersionMapper.selectById(activeSnapshot.getVersionId());
+            if (activeVersion == null || !dto.getExpectedPageVersion().equals(activeVersion.getVersionNo())) {
+                log.warn("rollbackPage failed: expectedPageVersion mismatch pageId={} expected={} active={}",
+                        pageId, dto.getExpectedPageVersion(), activeVersion == null ? null : activeVersion.getVersionNo());
+                throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "页面在线版本已被其他管理员更新，请刷新后重试");
+            }
+        }
+
+        // 幂等性校验：若当前在线 ACTIVE 快照绑定的版本与目标回滚版本相同，直接返回当前目标版本
+        if (activeSnapshot != null && activeSnapshot.getVersionId().equals(targetVersion.getId())) {
+            log.info("rollbackPage: idempotent request detected, pageId={} targetVersionId={}",
+                    pageId, targetVersion.getId());
+            return pageVersionConverter.toVO(targetVersion);
+        }
+
         // 1. 计算版本序号
         int nextVerNo = getNextVersionNo(pageId);
 
@@ -248,7 +309,7 @@ public class PagePublishServiceImpl implements PagePublishService {
         if (draft != null) {
             draft.setSchemaJson(targetVersion.getSchemaJson());
             draft.setSchemaHash(targetVersion.getSchemaHash());
-            draft.setEditorSessionRemark("由于回滚版本同步重置草稿");
+            draft.setEditorSessionRemark(REMARK_ROLLBACK_RESET_DRAFT);
             pageDraftMapper.updateById(draft);
         }
 
@@ -289,6 +350,73 @@ public class PagePublishServiceImpl implements PagePublishService {
         return pageVersionConverter.toVOList(entities);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<PageVersionVO> listVersions(Long pageId, int pageNo, int pageSize) {
+        requireActivePage(pageId);
+        int validPageNo = Math.max(1, pageNo);
+        int validPageSize = Math.min(100, Math.max(1, pageSize));
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<PageVersionEntity> mpPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(validPageNo, validPageSize);
+
+        LambdaQueryWrapper<PageVersionEntity> queryWrapper = new LambdaQueryWrapper<PageVersionEntity>()
+                .select(PageVersionEntity.class, info -> !info.getProperty().equals("schemaJson"))
+                .eq(PageVersionEntity::getPageId, pageId)
+                .orderByDesc(PageVersionEntity::getVersionNo);
+
+        pageVersionMapper.selectPage(mpPage, queryWrapper);
+
+        PagePublishSnapshotEntity activeSnapshot = pagePublishSnapshotMapper.selectOne(
+                new LambdaQueryWrapper<PagePublishSnapshotEntity>()
+                        .eq(PagePublishSnapshotEntity::getPageId, pageId)
+                        .eq(PagePublishSnapshotEntity::getPublishStatus, PublishSnapshotStatusEnum.ACTIVE.name())
+        );
+        Long activeVersionId = activeSnapshot != null ? activeSnapshot.getVersionId() : null;
+
+        List<PageVersionVO> voList = mpPage.getRecords().stream().map(entity -> {
+            PageVersionVO vo = pageVersionConverter.toVO(entity);
+            vo.setSchemaJson(null);
+            if (activeVersionId != null && activeVersionId.equals(entity.getId())) {
+                vo.setSnapshotStatus("ACTIVE");
+            } else {
+                vo.setSnapshotStatus("SUPERSEDED");
+            }
+            return vo;
+        }).toList();
+
+        return PageResult.of(voList, mpPage.getTotal(), validPageNo, validPageSize);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageVersionVO getVersionDetail(Long pageId, Long versionId) {
+        requireActivePage(pageId);
+        PageVersionEntity entity = pageVersionMapper.selectOne(
+                new LambdaQueryWrapper<PageVersionEntity>()
+                        .eq(PageVersionEntity::getId, versionId)
+                        .eq(PageVersionEntity::getPageId, pageId)
+        );
+        if (entity == null) {
+            log.warn("getVersionDetail failed: versionId={} pageId={} not found", versionId, pageId);
+            throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "指定的历史版本不存在");
+        }
+
+        PagePublishSnapshotEntity activeSnapshot = pagePublishSnapshotMapper.selectOne(
+                new LambdaQueryWrapper<PagePublishSnapshotEntity>()
+                        .eq(PagePublishSnapshotEntity::getPageId, pageId)
+                        .eq(PagePublishSnapshotEntity::getPublishStatus, PublishSnapshotStatusEnum.ACTIVE.name())
+        );
+
+        PageVersionVO vo = pageVersionConverter.toVO(entity);
+        if (activeSnapshot != null && activeSnapshot.getVersionId().equals(entity.getId())) {
+            vo.setSnapshotStatus("ACTIVE");
+        } else {
+            vo.setSnapshotStatus("SUPERSEDED");
+        }
+        return vo;
+    }
+
     private PageDefinitionEntity requireActivePage(Long id) {
         PageDefinitionEntity entity = pageDefinitionMapper.selectById(id);
         if (entity == null) {
@@ -299,15 +427,16 @@ public class PagePublishServiceImpl implements PagePublishService {
     }
 
     private int getNextVersionNo(Long pageId) {
-        List<PageVersionEntity> versions = pageVersionMapper.selectList(
+        PageVersionEntity lastVersion = pageVersionMapper.selectOne(
                 new LambdaQueryWrapper<PageVersionEntity>()
                         .eq(PageVersionEntity::getPageId, pageId)
                         .orderByDesc(PageVersionEntity::getVersionNo)
+                        .last("LIMIT 1")
         );
-        if (versions.isEmpty()) {
+        if (lastVersion == null) {
             return 1;
         }
-        return versions.get(0).getVersionNo() + 1;
+        return lastVersion.getVersionNo() + 1;
     }
 
     private void extractAndSaveDependencies(Long pageId, Long snapshotId, PageSchemaModel schema) {

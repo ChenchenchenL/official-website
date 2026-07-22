@@ -25,12 +25,15 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
+    public ResponseEntity<ApiResponse<Object>> handleBusinessException(BusinessException ex) {
         ErrorCode errorCode = ex.getErrorCode();
         if (errorCode != ErrorCode.SUCCESS) {
             log.warn("business exception code={} message={}", errorCode.getCode(), ex.getMessage());
         }
         HttpStatus status = resolveHttpStatus(errorCode);
+        if (ex.getData() != null) {
+            return ResponseEntity.status(status).body(ApiResponse.fail(errorCode, ex.getMessage(), ex.getData()));
+        }
         return ResponseEntity.status(status).body(ApiResponse.fail(errorCode, ex.getMessage()));
     }
 

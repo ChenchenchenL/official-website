@@ -66,6 +66,24 @@ public class AdminPageDraftController {
         return ApiResponse.success(pageDraftService.saveDraft(pageId, dto, lockToken, username));
     }
 
+    /**
+     * 将指定页面的草稿配置重置为当前在线 ACTIVE 发布快照。
+     *
+     * @param pageId 页面定义 ID
+     * @param lockToken 编辑锁凭证
+     * @return 包含更新后草稿 VO 的统一响应
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/{pageId}/reset-to-published")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<PageDraftVO> resetDraftToPublished(
+            @PathVariable Long pageId,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Editor-Lock-Token", required = false) String lockToken,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal Object principal) {
+        String username = resolveUsername(principal);
+        log.info("admin reset page draft to published pageId={} user={}", pageId, username);
+        return ApiResponse.success(pageDraftService.resetDraftToPublished(pageId, lockToken, username));
+    }
+
     private String resolveUsername(Object principal) {
         if (principal instanceof com.company.officialwebsite.infrastructure.security.AdminUserPrincipal adminUser) {
             return adminUser.getUsername();

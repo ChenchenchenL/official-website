@@ -11,6 +11,10 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionUpdateDTO;
+import com.company.officialwebsite.modules.pagebuilder.entity.PageDefinitionEntity;
+import com.company.officialwebsite.modules.pagebuilder.entity.PageDependencyEntity;
+import com.company.officialwebsite.modules.pagebuilder.mapper.PageDefinitionMapper;
+import com.company.officialwebsite.modules.pagebuilder.mapper.PageDependencyMapper;
 import com.company.officialwebsite.support.BaseAdminControllerIntegrationTest;
 import com.company.officialwebsite.support.TestConstants;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +36,12 @@ class AdminPageDefinitionControllerTest extends BaseAdminControllerIntegrationTe
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private PageDefinitionMapper pageDefinitionMapper;
+
+    @Autowired
+    private PageDependencyMapper pageDependencyMapper;
 
     @Test
     void getPageList_shouldReturnUnauthorized_whenNotLoggedIn() throws Exception {
@@ -92,6 +102,43 @@ class AdminPageDefinitionControllerTest extends BaseAdminControllerIntegrationTe
                         .content(objectMapper.writeValueAsString(createDTO)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.COMMON_PARAM_INVALID.getCode()));
+    }
+
+    @Test
+    void getPublishedDependencies_shouldRequireAdminAndReturnPagedDependencies() throws Exception {
+        mockMvc.perform(get("/admin/api/page-builder/pages/1/dependencies"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(TestConstants.AUTH_UNAUTHORIZED));
+
+        PageDefinitionEntity page = new PageDefinitionEntity();
+        page.setPageKey("dependency-diagnostics");
+        page.setName("依赖诊断页面");
+        page.setRoutePath("/dependency-diagnostics");
+        page.setPageType("NORMAL");
+        page.setStatus("ENABLED");
+        page.setVisible(true);
+        page.setSortOrder(1);
+        pageDefinitionMapper.insert(page);
+
+        PageDependencyEntity dependency = new PageDependencyEntity();
+        dependency.setPageId(page.getId());
+        dependency.setSnapshotId(100L);
+        dependency.setComponentInstanceId("product_grid");
+        dependency.setDependencyType("ENTITY");
+        dependency.setTargetModule("product");
+        dependency.setTargetEntityType("Product");
+        dependency.setTargetEntityId("ALL");
+        pageDependencyMapper.insert(dependency);
+
+        MockHttpSession session = loginAsAdmin();
+        mockMvc.perform(get("/admin/api/page-builder/pages/" + page.getId() + "/dependencies")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].componentInstanceId").value("product_grid"))
+                .andExpect(jsonPath("$.data.list[0].targetModule").value("product"))
+                .andExpect(jsonPath("$.data.list[0].targetEntityId").value("ALL"));
     }
 
     @Test
@@ -168,7 +215,29 @@ class AdminPageDefinitionControllerTest extends BaseAdminControllerIntegrationTe
         // 获取最新的 version
         int newVersion = version + 1; // 乐观锁应该自增了
 
-        // 4. 逻辑删除
+        // 4. 显式停用页面
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/disable")
+                        .session(session)
+                        .with(csrf())
+                        .param("version", String.valueOf(newVersion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
+                .andExpect(jsonPath("$.data.status").value("DISABLED"));
+
+        newVersion = newVersion + 1;
+
+        // 5. 显式启用页面
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/enable")
+                        .session(session)
+                        .with(csrf())
+                        .param("version", String.valueOf(newVersion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
+                .andExpect(jsonPath("$.data.status").value("ENABLED"));
+
+        newVersion = newVersion + 1;
+
+        // 6. 逻辑删除
         mockMvc.perform(delete("/admin/api/page-builder/pages/" + pageId)
                         .session(session)
                         .with(csrf())
@@ -176,7 +245,7 @@ class AdminPageDefinitionControllerTest extends BaseAdminControllerIntegrationTe
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS));
 
-        // 5. 再次查询应该不存在了 (404)
+        // 7. 再次查询应该不存在了 (404)
         mockMvc.perform(get("/admin/api/page-builder/pages/" + pageId)
                         .session(session))
                 .andExpect(status().isNotFound())

@@ -2,6 +2,9 @@ package com.company.officialwebsite.application.portal;
 
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageMetaVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageVO;
+import com.company.officialwebsite.modules.pagebuilder.vo.PortalRouteVO;
+
+import java.util.List;
 
 /**
  * PageRenderApplicationService: 门户前台页面装配渲染应用层服务，处理跨模块的数据查询与整合，并进行页面级二级缓存管理。
@@ -36,7 +39,14 @@ public interface PageRenderApplicationService {
      *
      * @param pageId 页面定义 ID，用于加载草稿
      * @return 已完成绑定装配并清除 binding 元数据的渲染模型
-     * @throws com.company.officialwebsite.common.exception.BusinessException 草稿不存在时抛 PAGE_DRAFT_NOT_FOUND
      */
     PortalPageVO renderDraftForPreview(Long pageId);
+
+    /**
+     * 查询 Portal 启用的活动页面路由清单（供 Portal 路由注册与 Sitemap 索引）。
+     *
+     * @param onlyVisible 若为 true，仅返回 visible=true 的站内公开页面；若为 false，返回全部 enabled 页面
+     * @return Portal 页面路由清单 VO 列表
+     */
+    List<PortalRouteVO> listActiveRoutes(Boolean onlyVisible);
 }

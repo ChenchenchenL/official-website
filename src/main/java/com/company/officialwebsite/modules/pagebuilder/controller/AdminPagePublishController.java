@@ -1,6 +1,7 @@
 package com.company.officialwebsite.modules.pagebuilder.controller;
 
 import com.company.officialwebsite.common.response.ApiResponse;
+import com.company.officialwebsite.common.response.PageResult;
 import com.company.officialwebsite.infrastructure.security.AdminUserPrincipal;
 import com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageRollbackDTO;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -72,13 +74,28 @@ public class AdminPagePublishController {
     }
 
     /**
-     * 查询指定页面定义的全部历史发布版本。
+     * 分页查询指定页面的历史发布版本摘要列表（默认排除全量 schemaJson 字段）。
      */
     @GetMapping("/{id}/versions")
     @PreAuthorize("hasRole('ADMINISTRATOR')")
-    public ApiResponse<List<PageVersionVO>> getVersions(@PathVariable Long id) {
-        log.info("Admin request: get versions list for page id={}", id);
-        return ApiResponse.success(pagePublishService.listVersions(id));
+    public ApiResponse<PageResult<PageVersionVO>> getVersions(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int pageNo,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        log.info("Admin request: get versions list for page id={} pageNo={} pageSize={}", id, pageNo, pageSize);
+        return ApiResponse.success(pagePublishService.listVersions(id, pageNo, pageSize));
+    }
+
+    /**
+     * 查询指定页面单个历史版本的配置全量详情（包含完整 schemaJson）。
+     */
+    @GetMapping("/{id}/versions/{versionId}")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<PageVersionVO> getVersionDetail(
+            @PathVariable Long id,
+            @PathVariable Long versionId) {
+        log.info("Admin request: get version detail for page id={} versionId={}", id, versionId);
+        return ApiResponse.success(pagePublishService.getVersionDetail(id, versionId));
     }
 
     private String resolveUsername(Object principal) {

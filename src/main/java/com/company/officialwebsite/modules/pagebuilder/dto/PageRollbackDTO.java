@@ -19,6 +19,10 @@ public class PageRollbackDTO {
     @Size(max = 255, message = "变更说明最长255字符")
     private String changeSummary;
 
+    private Long expectedSnapshotId;
+
+    private Integer expectedPageVersion;
+
     public Long getVersionId() {
         return versionId;
     }
@@ -41,5 +45,21 @@ public class PageRollbackDTO {
 
     public void setChangeSummary(String changeSummary) {
         this.changeSummary = changeSummary;
+    }
+
+    public Long getExpectedSnapshotId() {
+        return expectedSnapshotId;
+    }
+
+    public void setExpectedSnapshotId(Long expectedSnapshotId) {
+        this.expectedSnapshotId = expectedSnapshotId;
+    }
+
+    public Integer getExpectedPageVersion() {
+        return expectedPageVersion;
+    }
+
+    public void setExpectedPageVersion(Integer expectedPageVersion) {
+        this.expectedPageVersion = expectedPageVersion;
     }
 }

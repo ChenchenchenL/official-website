@@ -3,12 +3,14 @@ package com.company.officialwebsite.modules.pagebuilder.controller;
 import com.company.officialwebsite.common.response.ApiResponse;
 import com.company.officialwebsite.modules.pagebuilder.service.ComponentTemplateService;
 import com.company.officialwebsite.modules.pagebuilder.vo.ComponentTemplateVO;
+import com.company.officialwebsite.modules.pagebuilder.vo.ComponentTemplateUsageVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -51,5 +53,18 @@ public class AdminComponentTemplateController {
     public ApiResponse<ComponentTemplateVO> getTemplateDetail(@PathVariable String code) {
         log.info("admin get component template detail code={}", code);
         return ApiResponse.success(templateService.getTemplateByCode(code));
+    }
+
+    /**
+     * 查询模板在草稿和线上页面快照中的引用，供代码/迁移托管模板变更前进行影响评估。
+     */
+    @GetMapping("/{code}/usage")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<ComponentTemplateUsageVO> getTemplateUsage(
+            @PathVariable String code,
+            @RequestParam(defaultValue = "1") int pageNo,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        log.info("admin get component template usage code={} pageNo={} pageSize={}", code, pageNo, pageSize);
+        return ApiResponse.success(templateService.getTemplateUsage(code, pageNo, pageSize));
     }
 }

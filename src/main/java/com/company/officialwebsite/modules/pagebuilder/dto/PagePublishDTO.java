@@ -16,6 +16,9 @@ public class PagePublishDTO {
     @NotNull(message = "草稿版本号不能为空")
     private Integer version;
 
+    @Size(max = 64, message = "Schema哈希值最长64字符")
+    private String schemaHash;
+
     public String getChangeSummary() {
         return changeSummary;
     }
@@ -30,5 +33,13 @@ public class PagePublishDTO {
 
     public void setVersion(Integer version) {
         this.version = version;
+    }
+
+    public String getSchemaHash() {
+        return schemaHash;
+    }
+
+    public void setSchemaHash(String schemaHash) {
+        this.schemaHash = schemaHash;
     }
 }

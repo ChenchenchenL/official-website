@@ -44,12 +44,11 @@ public class PortalPageRenderServiceImpl implements PortalPageRenderService {
     @Override
     @Transactional(readOnly = true)
     public PortalPageVO renderPageByRoute(String routePath) {
-        // 校验页面存在且可见/启用
+        // 校验页面存在且启用
         PageDefinitionEntity page = pageDefinitionMapper.selectOne(
                 new LambdaQueryWrapper<PageDefinitionEntity>()
                         .eq(PageDefinitionEntity::getRoutePath, routePath.trim())
                         .eq(PageDefinitionEntity::getStatus, PageStatusEnum.ENABLED.name())
-                        .eq(PageDefinitionEntity::getVisible, true)
         );
         if (page == null) {
             log.warn("renderPageByRoute failed: routePath={} not found or inactive", routePath);
@@ -104,12 +103,11 @@ public class PortalPageRenderServiceImpl implements PortalPageRenderService {
     @Override
     @Transactional(readOnly = true)
     public PortalPageMetaVO getPageMeta(String pageKey) {
-        // 校验页面存在且可见/启用
+        // 校验页面存在且启用
         PageDefinitionEntity page = pageDefinitionMapper.selectOne(
                 new LambdaQueryWrapper<PageDefinitionEntity>()
                         .eq(PageDefinitionEntity::getPageKey, pageKey.trim())
                         .eq(PageDefinitionEntity::getStatus, PageStatusEnum.ENABLED.name())
-                        .eq(PageDefinitionEntity::getVisible, true)
         );
         if (page == null) {
             log.warn("getPageMeta failed: pageKey={} not found or inactive", pageKey);

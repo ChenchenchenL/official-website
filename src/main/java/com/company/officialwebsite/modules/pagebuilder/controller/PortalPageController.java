@@ -4,6 +4,9 @@ import com.company.officialwebsite.common.response.ApiResponse;
 import com.company.officialwebsite.application.portal.PageRenderApplicationService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageMetaVO;
 import com.company.officialwebsite.modules.pagebuilder.vo.PortalPageVO;
+import com.company.officialwebsite.modules.pagebuilder.vo.PortalRouteVO;
+
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +56,19 @@ public class PortalPageController {
     public ApiResponse<PortalPageMetaVO> getPageMeta(@PathVariable String pageKey) {
         log.info("portal page meta request pageKey={}", pageKey);
         return ApiResponse.success(pageRenderApplicationService.getPageMeta(pageKey));
+    }
+
+    /**
+     * 查询 Portal 已启用的活动页面路由清单（供 Portal 路由注册与 Sitemap 索引）。
+     *
+     * @param onlyVisible 若为 true，仅返回 visible=true 的公开页面；若为 false，返回全部 enabled 页面
+     * @return 启用的页面路由清单
+     */
+    @GetMapping("/routes")
+    public ApiResponse<List<PortalRouteVO>> listActiveRoutes(
+            @RequestParam(required = false, defaultValue = "false") Boolean onlyVisible) {
+        log.info("portal list active routes request onlyVisible={}", onlyVisible);
+        return ApiResponse.success(pageRenderApplicationService.listActiveRoutes(onlyVisible));
     }
 }
 

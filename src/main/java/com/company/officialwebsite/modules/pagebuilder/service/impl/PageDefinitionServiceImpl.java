@@ -15,6 +15,7 @@ import com.company.officialwebsite.modules.pagebuilder.mapper.PageDefinitionMapp
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageDraftMapper;
 import com.company.officialwebsite.modules.pagebuilder.service.PageDefinitionService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageDefinitionVO;
+import com.company.officialwebsite.modules.pagebuilder.vo.PortalRouteVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,21 +40,26 @@ public class PageDefinitionServiceImpl implements PageDefinitionService {
     private static final String ACTION_CREATE = "CREATE_PAGE";
     private static final String ACTION_UPDATE = "UPDATE_PAGE";
     private static final String ACTION_DELETE = "DELETE_PAGE";
+    private static final String ACTION_ENABLE = "ENABLE_PAGE";
+    private static final String ACTION_DISABLE = "DISABLE_PAGE";
 
     private final PageDefinitionMapper pageDefinitionMapper;
     private final PageDraftMapper pageDraftMapper;
     private final PageDefinitionConverter pageDefinitionConverter;
     private final AuditLogService auditLogService;
+    private final com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService pageCacheInvalidationService;
 
     public PageDefinitionServiceImpl(
             PageDefinitionMapper pageDefinitionMapper,
             PageDraftMapper pageDraftMapper,
             PageDefinitionConverter pageDefinitionConverter,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService pageCacheInvalidationService) {
         this.pageDefinitionMapper = pageDefinitionMapper;
         this.pageDraftMapper = pageDraftMapper;
         this.pageDefinitionConverter = pageDefinitionConverter;
         this.auditLogService = auditLogService;
+        this.pageCacheInvalidationService = pageCacheInvalidationService;
     }
 
     @Override
@@ -132,6 +138,8 @@ public class PageDefinitionServiceImpl implements PageDefinitionService {
 
         checkDuplicateRoutePath(dto.getRoutePath(), id);
 
+        String oldRoutePath = entity.getRoutePath();
+
         Map<String, Object> beforeSnapshot = toSnapshot(entity);
 
         entity.setName(dto.getName().trim());
@@ -146,6 +154,9 @@ public class PageDefinitionServiceImpl implements PageDefinitionService {
                 BIZ_MODULE, ACTION_UPDATE, TARGET_TYPE, entity.getId(), beforeSnapshot, afterSnapshot
         );
 
+        // 事务提交后同步清除旧路由与新路由的 Redis 缓存
+        pageCacheInvalidationService.invalidatePageCaches(id, oldRoutePath, dto.getRoutePath());
+
         log.info("Successfully updated page: id={}", id);
         return getAdminPageList();
     }
@@ -156,6 +167,8 @@ public class PageDefinitionServiceImpl implements PageDefinitionService {
         PageDefinitionEntity entity = requireActivePage(id);
 
         ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+
+        String routePath = entity.getRoutePath();
 
         Map<String, Object> beforeSnapshot = toSnapshot(entity);
 
@@ -175,8 +188,86 @@ public class PageDefinitionServiceImpl implements PageDefinitionService {
                 BIZ_MODULE, ACTION_DELETE, TARGET_TYPE, id, beforeSnapshot, null
         );
 
+        // 4. 事务提交后失效页面路由与元数据缓存
+        pageCacheInvalidationService.invalidatePageCaches(id, routePath, routePath);
+
         log.info("Successfully deleted page and draft: id={}", id);
         return getAdminPageList();
+    }
+
+    @Override
+    @Transactional
+    public PageDefinitionVO enablePage(Long id, Integer version) {
+        PageDefinitionEntity entity = requireActivePage(id);
+        ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+
+        if (PageStatusEnum.ENABLED.name().equals(entity.getStatus())) {
+            log.info("enablePage: page is already enabled id={}", id);
+            return pageDefinitionConverter.toVO(entity);
+        }
+
+        Map<String, Object> beforeSnapshot = toSnapshot(entity);
+        entity.setStatus(PageStatusEnum.ENABLED.name());
+        ConcurrencyHelper.tryUpdate(pageDefinitionMapper, entity);
+
+        Map<String, Object> afterSnapshot = toSnapshot(entity);
+        auditLogService.recordGenericOperation(
+                BIZ_MODULE, ACTION_ENABLE, TARGET_TYPE, id, beforeSnapshot, afterSnapshot
+        );
+
+        pageCacheInvalidationService.invalidatePageCaches(id, entity.getRoutePath(), entity.getRoutePath());
+
+        log.info("Successfully enabled page: id={}", id);
+        return pageDefinitionConverter.toVO(entity);
+    }
+
+    @Override
+    @Transactional
+    public PageDefinitionVO disablePage(Long id, Integer version) {
+        PageDefinitionEntity entity = requireActivePage(id);
+        ConcurrencyHelper.assertVersion(entity.getVersion(), version);
+
+        if (PageStatusEnum.DISABLED.name().equals(entity.getStatus())) {
+            log.info("disablePage: page is already disabled id={}", id);
+            return pageDefinitionConverter.toVO(entity);
+        }
+
+        Map<String, Object> beforeSnapshot = toSnapshot(entity);
+        entity.setStatus(PageStatusEnum.DISABLED.name());
+        ConcurrencyHelper.tryUpdate(pageDefinitionMapper, entity);
+
+        Map<String, Object> afterSnapshot = toSnapshot(entity);
+        auditLogService.recordGenericOperation(
+                BIZ_MODULE, ACTION_DISABLE, TARGET_TYPE, id, beforeSnapshot, afterSnapshot
+        );
+
+        pageCacheInvalidationService.invalidatePageCaches(id, entity.getRoutePath(), entity.getRoutePath());
+
+        log.info("Successfully disabled page: id={}", id);
+        return pageDefinitionConverter.toVO(entity);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PortalRouteVO> listActiveRoutes(Boolean onlyVisible) {
+        LambdaQueryWrapper<PageDefinitionEntity> queryWrapper = new LambdaQueryWrapper<PageDefinitionEntity>()
+                .eq(PageDefinitionEntity::getStatus, PageStatusEnum.ENABLED.name());
+        if (Boolean.TRUE.equals(onlyVisible)) {
+            queryWrapper.eq(PageDefinitionEntity::getVisible, true);
+        }
+        queryWrapper.orderByAsc(PageDefinitionEntity::getSortOrder)
+                    .orderByAsc(PageDefinitionEntity::getId);
+
+        List<PageDefinitionEntity> entities = pageDefinitionMapper.selectList(queryWrapper);
+        return entities.stream().map(e -> {
+            PortalRouteVO vo = new PortalRouteVO();
+            vo.setRoutePath(e.getRoutePath());
+            vo.setPageKey(e.getPageKey());
+            vo.setName(e.getName());
+            vo.setVisible(e.getVisible());
+            vo.setUpdatedAt(e.getUpdatedAt());
+            return vo;
+        }).toList();
     }
 
     private PageDefinitionEntity requireActivePage(Long id) {

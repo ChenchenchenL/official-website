@@ -153,18 +153,55 @@ class AdminPagePublishControllerTest extends BaseAdminControllerIntegrationTest 
 
         long versionId = objectMapper.readTree(publishResponse).path("data").path("id").asLong();
 
-        // 5. 查询版本列表，应包含刚刚发布的 version 1
-        mockMvc.perform(get("/admin/api/page-builder/pages/" + pageId + "/versions")
+        // 5. 查询版本列表（分页摘要），应包含刚刚发布的 version 1，且 schemaJson 为空
+        mockMvc.perform(get("/admin/api/page-builder/pages/" + pageId + "/versions?pageNo=1&pageSize=10")
                         .session(session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].id").value(versionId))
-                .andExpect(jsonPath("$.data[0].versionNo").value(1));
+                .andExpect(jsonPath("$.data.list").isArray())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(versionId))
+                .andExpect(jsonPath("$.data.list[0].versionNo").value(1))
+                .andExpect(jsonPath("$.data.list[0].schemaJson").doesNotExist());
 
-        // 6. 执行回滚操作到版本 1（JSON 请求体；version 为发布后的草稿版本号）
+        // 5.5 单版本详情查询（包含完整 schemaJson）
+        mockMvc.perform(get("/admin/api/page-builder/pages/" + pageId + "/versions/" + versionId)
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(versionId))
+                .andExpect(jsonPath("$.data.schemaJson.name").value("解决方案页面"));
+
+        // 6. 保存并发布第二版，使版本 1 成为可回滚的历史版本。
+        schema.setName("解决方案页面第二版");
+        props.put("title", "我们的解决方案第二版");
+        PageDraftSaveDTO secondDraftDTO = new PageDraftSaveDTO();
+        secondDraftDTO.setSchemaJson(schema);
+        secondDraftDTO.setEditorSessionRemark("解决方案草稿二");
+        secondDraftDTO.setVersion(1);
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(secondDraftDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(2));
+
+        PagePublishDTO secondPublishDTO = new PagePublishDTO();
+        secondPublishDTO.setChangeSummary("发布第二版解决方案");
+        secondPublishDTO.setVersion(2);
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/publish")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(secondPublishDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.versionNo").value(2));
+
+        // 7. 执行回滚操作到版本 1（JSON 请求体；version 为第二版草稿版本号）
         PageRollbackDTO rollbackDTO = new PageRollbackDTO();
         rollbackDTO.setVersionId(versionId);
-        rollbackDTO.setVersion(1);
+        rollbackDTO.setVersion(2);
         rollbackDTO.setChangeSummary("回滚至版本 No.1 (变更说明: 发布首个正式版本的解决方案)");
 
         mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/rollback")
@@ -175,16 +212,115 @@ class AdminPagePublishControllerTest extends BaseAdminControllerIntegrationTest 
                         .content(objectMapper.writeValueAsString(rollbackDTO)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
-                .andExpect(jsonPath("$.data.versionNo").value(2))
+                .andExpect(jsonPath("$.data.versionNo").value(3))
                 .andExpect(jsonPath("$.data.sourceType").value("ROLLBACK_BASE"))
                 .andExpect(jsonPath("$.data.changeSummary").value("回滚至版本 No.1 (变更说明: 发布首个正式版本的解决方案)"));
 
-        // 7. 版本列表里现在有 2 个版本（版本 2 在首位）
+        // 8. 版本列表里现在有 3 个版本（回滚版本 3 在首位）
         mockMvc.perform(get("/admin/api/page-builder/pages/" + pageId + "/versions")
                         .session(session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[0].versionNo").value(2))
-                .andExpect(jsonPath("$.data[1].versionNo").value(1));
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.list[0].versionNo").value(3))
+                .andExpect(jsonPath("$.data.list[1].versionNo").value(2))
+                .andExpect(jsonPath("$.data.list[2].versionNo").value(1));
+    }
+
+    @Test
+    void publishAndRollback_idempotencyTest() throws Exception {
+        MockHttpSession session = loginAsAdmin();
+
+        // 1. 创建页面定义
+        PageDefinitionCreateDTO createDTO = new PageDefinitionCreateDTO();
+        createDTO.setPageKey("idempotency-page");
+        createDTO.setName("幂等性测试页面");
+        createDTO.setRoutePath("/idempotency");
+        createDTO.setPageType("NORMAL");
+        createDTO.setVisible(true);
+        createDTO.setSortOrder(100);
+
+        String createResp = mockMvc.perform(post("/admin/api/page-builder/pages")
+                        .session(session)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createDTO)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        long pageId = objectMapper.readTree(createResp).path("data").path("id").asLong();
+
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+
+        // 2. 保存草稿
+        PageSchemaModel schema = new PageSchemaModel();
+        schema.setPageKey("idempotency-page");
+        schema.setName("幂等性测试页面");
+        LayoutModel layout = new LayoutModel();
+        layout.setType("vertical");
+        schema.setLayout(layout);
+        SectionModel section = new SectionModel();
+        section.setId("idempotency_hero");
+        section.setComponent("HeroBanner");
+        section.setVisible(true);
+        section.setProps(Map.of("title", "幂等性测试"));
+        schema.setSections(Collections.singletonList(section));
+
+        PageDraftSaveDTO saveDTO = new PageDraftSaveDTO();
+        saveDTO.setSchemaJson(schema);
+        saveDTO.setEditorSessionRemark("幂等草稿");
+        saveDTO.setVersion(0);
+
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(saveDTO)))
+                .andExpect(status().isOk());
+
+        // 3. 首次发布
+        PagePublishDTO publishDTO = new PagePublishDTO();
+        publishDTO.setChangeSummary("首次发布");
+        publishDTO.setVersion(1);
+
+        String firstPubResp = mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/publish")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(publishDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.versionNo").value(1))
+                .andReturn().getResponse().getContentAsString();
+
+        long firstVersionId = objectMapper.readTree(firstPubResp).path("data").path("id").asLong();
+
+        // 4. 重复发布（同一草稿 Schema），应当幂等成功并返回相同版本，不产生新版本号
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/publish")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(publishDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(firstVersionId))
+                .andExpect(jsonPath("$.data.versionNo").value(1));
+
+        // 5. 重复回滚到当前已在线的版本，应当幂等成功并返回该版本
+        PageRollbackDTO rollbackDTO = new PageRollbackDTO();
+        rollbackDTO.setVersionId(firstVersionId);
+        rollbackDTO.setVersion(1);
+        rollbackDTO.setChangeSummary("重复回滚已在线版本");
+
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/rollback")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(rollbackDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(firstVersionId))
+                .andExpect(jsonPath("$.data.versionNo").value(1));
     }
 }

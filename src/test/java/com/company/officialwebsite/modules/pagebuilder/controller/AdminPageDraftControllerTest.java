@@ -79,7 +79,7 @@ class AdminPageDraftControllerTest extends BaseAdminControllerIntegrationTest {
         mockMvc.perform(get("/admin/api/page-builder/drafts/999999999")
                         .session(session))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_DRAFT_NOT_FOUND.getCode()));
+                .andExpect(jsonPath("$.code").value(ErrorCode.PAGE_NOT_FOUND.getCode()));
     }
 
     @Test
@@ -154,5 +154,118 @@ class AdminPageDraftControllerTest extends BaseAdminControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.version").value(1))
                 .andExpect(jsonPath("$.data.schemaJson.name").value("联系我们页面"))
                 .andExpect(jsonPath("$.data.schemaJson.sections[0].id").value("hero_section"));
+    }
+
+    @Test
+    void resetDraftToPublished_shouldRevertDraftToActiveSnapshot() throws Exception {
+        MockHttpSession session = loginAsAdmin();
+
+        // 1. 创建页面
+        PageDefinitionCreateDTO createDTO = new PageDefinitionCreateDTO();
+        createDTO.setPageKey("contact-page");
+        createDTO.setName("联系我们");
+        createDTO.setRoutePath("/contact");
+        createDTO.setPageType("NORMAL");
+        createDTO.setVisible(true);
+        createDTO.setSortOrder(30);
+
+        String createResponse = mockMvc.perform(post("/admin/api/page-builder/pages")
+                        .session(session)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createDTO)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        long pageId = objectMapper.readTree(createResponse).path("data").path("id").asLong();
+
+        LockStatusVO lock = editorLockService.acquireLock(
+                EditorResourceTypeEnum.PAGE, pageId, null, TestConstants.ADMIN_USERNAME, "管理员", false);
+
+        // 2. 在未发布状态下重置，应返回 404
+        mockMvc.perform(post("/admin/api/page-builder/drafts/" + pageId + "/reset-to-published")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(ErrorCode.COMMON_RESOURCE_NOT_FOUND.getCode()));
+
+        // 3. 先保存一份可发布的首版草稿
+        PageSchemaModel publishedSchema = new PageSchemaModel();
+        publishedSchema.setPageKey("contact-page");
+        publishedSchema.setName("联系我们");
+        LayoutModel publishedLayout = new LayoutModel();
+        publishedLayout.setType("vertical");
+        publishedSchema.setLayout(publishedLayout);
+        SectionModel publishedSection = new SectionModel();
+        publishedSection.setId("contact_hero");
+        publishedSection.setComponent("HeroBanner");
+        publishedSection.setVisible(true);
+        publishedSection.setProps(Map.of("title", "联系我们"));
+        publishedSchema.setSections(Collections.singletonList(publishedSection));
+
+        PageDraftSaveDTO publishedDraftDTO = new PageDraftSaveDTO();
+        publishedDraftDTO.setSchemaJson(publishedSchema);
+        publishedDraftDTO.setEditorSessionRemark("待发布首版草稿");
+        publishedDraftDTO.setVersion(0);
+
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(publishedDraftDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(1));
+
+        // 4. 发布首版草稿
+        com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO pubDTO = new com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO();
+        pubDTO.setChangeSummary("发布首版");
+        pubDTO.setVersion(1);
+
+        mockMvc.perform(post("/admin/api/page-builder/pages/" + pageId + "/publish")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(pubDTO)))
+                .andExpect(status().isOk());
+
+        // 5. 修改草稿
+        PageSchemaModel modifiedSchema = new PageSchemaModel();
+        modifiedSchema.setPageKey("contact-page");
+        modifiedSchema.setName("修改后的未知草稿");
+        LayoutModel modifiedLayout = new LayoutModel();
+        modifiedLayout.setType("vertical");
+        modifiedSchema.setLayout(modifiedLayout);
+        SectionModel modifiedSection = new SectionModel();
+        modifiedSection.setId("contact_hero_changed");
+        modifiedSection.setComponent("HeroBanner");
+        modifiedSection.setVisible(true);
+        modifiedSection.setProps(Map.of("title", "修改后的未知草稿"));
+        modifiedSchema.setSections(Collections.singletonList(modifiedSection));
+
+        PageDraftSaveDTO saveDTO = new PageDraftSaveDTO();
+        saveDTO.setSchemaJson(modifiedSchema);
+        saveDTO.setEditorSessionRemark("未发布的临时草稿");
+        saveDTO.setVersion(1);
+
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(saveDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.schemaJson.name").value("修改后的未知草稿"));
+
+        // 6. 重置草稿为已发布快照
+        mockMvc.perform(post("/admin/api/page-builder/drafts/" + pageId + "/reset-to-published")
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lock.getLockToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.schemaJson.name").value("联系我们"))
+                .andExpect(jsonPath("$.data.editorSessionRemark").value("重置草稿为当前已发布版本"));
     }
 }

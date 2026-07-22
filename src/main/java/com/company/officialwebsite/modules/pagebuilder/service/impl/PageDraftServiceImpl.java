@@ -6,8 +6,13 @@ import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.common.utils.ConcurrencyHelper;
 import com.company.officialwebsite.modules.pagebuilder.converter.PageDraftConverter;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
+import com.company.officialwebsite.modules.pagebuilder.entity.PageDefinitionEntity;
 import com.company.officialwebsite.modules.pagebuilder.entity.PageDraftEntity;
+import com.company.officialwebsite.modules.pagebuilder.entity.PagePublishSnapshotEntity;
+import com.company.officialwebsite.modules.pagebuilder.enums.PublishSnapshotStatusEnum;
+import com.company.officialwebsite.modules.pagebuilder.mapper.PageDefinitionMapper;
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageDraftMapper;
+import com.company.officialwebsite.modules.pagebuilder.mapper.PagePublishSnapshotMapper;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageDraftService;
@@ -39,9 +44,12 @@ public class PageDraftServiceImpl implements PageDraftService {
 
     private static final String MODULE_NAME = "PAGE_BUILDER";
     private static final String ACTION_SAVE_DRAFT = "SAVE_DRAFT";
+    private static final String ACTION_RESET_DRAFT = "RESET_DRAFT_TO_PUBLISHED";
     private static final String TARGET_TYPE = "PAGE_DRAFT";
 
     private final PageDraftMapper draftMapper;
+    private final PagePublishSnapshotMapper pagePublishSnapshotMapper;
+    private final PageDefinitionMapper pageDefinitionMapper;
     private final PageDraftConverter draftConverter;
     private final PageSchemaValidationService pageSchemaValidationService;
     private final EditorLockService editorLockService;
@@ -50,12 +58,16 @@ public class PageDraftServiceImpl implements PageDraftService {
 
     public PageDraftServiceImpl(
             PageDraftMapper draftMapper,
+            PagePublishSnapshotMapper pagePublishSnapshotMapper,
+            PageDefinitionMapper pageDefinitionMapper,
             PageDraftConverter draftConverter,
             PageSchemaValidationService pageSchemaValidationService,
             EditorLockService editorLockService,
             AuditLogService auditLogService,
             ObjectMapper objectMapper) {
         this.draftMapper = draftMapper;
+        this.pagePublishSnapshotMapper = pagePublishSnapshotMapper;
+        this.pageDefinitionMapper = pageDefinitionMapper;
         this.draftConverter = draftConverter;
         this.pageSchemaValidationService = pageSchemaValidationService;
         this.editorLockService = editorLockService;
@@ -69,6 +81,7 @@ public class PageDraftServiceImpl implements PageDraftService {
     @Override
     @Transactional(readOnly = true)
     public PageDraftVO getDraft(Long pageId) {
+        requireActivePage(pageId);
         PageDraftEntity draft = queryDraftByPageId(pageId);
         if (draft == null) {
             log.warn("getDraft pageId={} draft not found", pageId);
@@ -89,14 +102,22 @@ public class PageDraftServiceImpl implements PageDraftService {
                 com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
                 pageId, lockToken, operator);
 
+        requireActivePage(pageId);
+
         PageDraftEntity draft = queryDraftByPageId(pageId);
         if (draft == null) {
             log.warn("saveDraft pageId={} draft not found", pageId);
             throw new BusinessException(ErrorCode.PAGE_DRAFT_NOT_FOUND);
         }
 
-        // 乐观锁版本校验
-        ConcurrencyHelper.assertVersion(draft.getVersion(), dto.getVersion());
+        // 乐观锁版本校验：若版本冲突，抛出包含最新草稿 VO 恢复数据的 BusinessException
+        if (dto.getVersion() == null || dto.getVersion() < 0) {
+            throw new BusinessException(ErrorCode.COMMON_PARAM_INVALID, "版本号不能为负数");
+        }
+        if (!draft.getVersion().equals(dto.getVersion())) {
+            log.warn("saveDraft version conflict pageId={} clientVer={} dbVer={}", pageId, dto.getVersion(), draft.getVersion());
+            throw new BusinessException(ErrorCode.COMMON_STATE_CONFLICT, "草稿版本冲突，请刷新后重试", draftConverter.toVO(draft));
+        }
 
         // Schema 合规性校验（白名单、XSS 清洗等）
         pageSchemaValidationService.validateSchema(dto.getSchemaJson());
@@ -122,13 +143,75 @@ public class PageDraftServiceImpl implements PageDraftService {
 
         log.info("saveDraft success pageId={} draftId={} schemaHash={}", pageId, draft.getId(), schemaHash);
 
-        // 重新查询以返回最新状态（含 updatedAt 等自动填充字段）
+        return afterSnapshot;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public PageDraftVO resetDraftToPublished(Long pageId, String lockToken, String operator) {
+        // 门禁：独占编辑锁校验
+        editorLockService.validateLock(
+                com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
+                pageId, lockToken, operator);
+
+        requireActivePage(pageId);
+
+        PageDraftEntity draft = queryDraftByPageId(pageId);
+        if (draft == null) {
+            log.warn("resetDraftToPublished failed: pageId={} draft not found", pageId);
+            throw new BusinessException(ErrorCode.PAGE_DRAFT_NOT_FOUND);
+        }
+
+        // 查询当前在线 ACTIVE 快照
+        PagePublishSnapshotEntity activeSnapshot = pagePublishSnapshotMapper.selectOne(
+                new LambdaQueryWrapper<PagePublishSnapshotEntity>()
+                        .eq(PagePublishSnapshotEntity::getPageId, pageId)
+                        .eq(PagePublishSnapshotEntity::getPublishStatus, PublishSnapshotStatusEnum.ACTIVE.name())
+        );
+
+        if (activeSnapshot == null || activeSnapshot.getSnapshotJson() == null) {
+            log.warn("resetDraftToPublished failed: pageId={} active snapshot not found", pageId);
+            throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "页面尚未发布过，不存在可恢复的已发布版本");
+        }
+
+        // 幂等性校验：若草稿已经与 ACTIVE 快照相同，无需重复数据库更新
+        if (draft.getSchemaHash() != null && draft.getSchemaHash().equals(activeSnapshot.getSnapshotHash())) {
+            log.info("resetDraftToPublished: draft already identical to ACTIVE snapshot pageId={}", pageId);
+            return draftConverter.toVO(draft);
+        }
+
+        PageDraftVO beforeSnapshot = draftConverter.toVO(draft);
+
+        draft.setSchemaJson(activeSnapshot.getSnapshotJson());
+        draft.setSchemaHash(activeSnapshot.getSnapshotHash());
+        draft.setEditorSessionRemark("重置草稿为当前已发布版本");
+
+        ConcurrencyHelper.tryUpdate(draftMapper, draft);
+
+        PageDraftVO afterSnapshot = draftConverter.toVO(draft);
+        auditLogService.recordGenericOperation(
+                MODULE_NAME, ACTION_RESET_DRAFT, TARGET_TYPE, draft.getId(),
+                beforeSnapshot, afterSnapshot);
+
+        log.info("resetDraftToPublished success pageId={} draftId={}", pageId, draft.getId());
         return getDraft(pageId);
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    private PageDefinitionEntity requireActivePage(Long id) {
+        PageDefinitionEntity entity = pageDefinitionMapper.selectById(id);
+        if (entity == null) {
+            log.warn("Page definition not found or deleted: id={}", id);
+            throw new BusinessException(ErrorCode.PAGE_NOT_FOUND);
+        }
+        return entity;
+    }
 
     /**
      * 按 pageId 查询未逻辑删除的草稿实体。

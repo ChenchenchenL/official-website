@@ -58,4 +58,20 @@ class AdminComponentTemplateControllerTest extends BaseAdminControllerIntegratio
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.COMMON_RESOURCE_NOT_FOUND.getCode()));
     }
+
+    @Test
+    void getTemplateUsage_shouldRequireAdminAndReturnPagedUsage() throws Exception {
+        mockMvc.perform(get("/admin/api/page-builder/component-templates/HeroBanner/usage"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(TestConstants.AUTH_UNAUTHORIZED));
+
+        MockHttpSession session = loginAsAdmin();
+        mockMvc.perform(get("/admin/api/page-builder/component-templates/HeroBanner/usage")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(TestConstants.SUCCESS))
+                .andExpect(jsonPath("$.data.componentCode").value("HeroBanner"))
+                .andExpect(jsonPath("$.data.activeSnapshotPages.total").value(0))
+                .andExpect(jsonPath("$.data.draftPages.total").value(0));
+    }
 }

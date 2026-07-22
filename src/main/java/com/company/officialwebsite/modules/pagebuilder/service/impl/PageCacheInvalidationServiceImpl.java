@@ -69,6 +69,40 @@ public class PageCacheInvalidationServiceImpl implements PageCacheInvalidationSe
         invalidatePageCaches(affectedPageIds, "publishedOrRolledBackPageId=" + pageId);
     }
 
+    @Override
+    public void invalidatePageCaches(Long pageId, String oldRoutePath, String newRoutePath) {
+        Set<String> keys = new LinkedHashSet<>();
+        if (oldRoutePath != null && !oldRoutePath.isBlank()) {
+            keys.add(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + oldRoutePath.trim());
+        }
+        if (newRoutePath != null && !newRoutePath.isBlank()) {
+            keys.add(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + newRoutePath.trim());
+        }
+
+        if (pageId != null) {
+            Set<Long> affectedPageIds = new LinkedHashSet<>();
+            affectedPageIds.add(pageId);
+            List<Long> relatedPageIds = pageDependencyMapper.selectRelatedPageIds(pageId);
+            if (relatedPageIds != null) {
+                affectedPageIds.addAll(relatedPageIds);
+            }
+
+            List<PageRouteProjection> routes = pageDefinitionMapper.selectRoutesByPageIds(affectedPageIds);
+            if (routes != null) {
+                for (PageRouteProjection route : routes) {
+                    keys.add(PageBuilderConstants.PORTAL_PAGE_CACHE_PREFIX + route.getRoutePath());
+                    keys.add(PageBuilderConstants.PORTAL_PAGE_META_CACHE_PREFIX + route.getPageKey());
+                }
+            }
+        }
+
+        if (!keys.isEmpty()) {
+            portalCacheSupport.invalidate(keys.toArray(new String[0]));
+            log.info("[PageCacheInvalidation] invalidated {} key(s) for pageId={}, oldRoute={}, newRoute={}",
+                    keys.size(), pageId, oldRoutePath, newRoutePath);
+        }
+    }
+
     /**
      * 将页面 ID 批量转换为渲染与 SEO 缓存 Key，并交由统一缓存支撑在事务提交后失效。
      */

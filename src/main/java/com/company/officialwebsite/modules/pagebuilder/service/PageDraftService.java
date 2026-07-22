@@ -29,5 +29,15 @@ public interface PageDraftService {
      * @throws com.company.officialwebsite.common.exception.BusinessException 草稿不存在或版本冲突时抛出对应错误码
      */
     PageDraftVO saveDraft(Long pageId, PageDraftSaveDTO dto, String lockToken, String operator);
+
+    /**
+     * 将指定页面的草稿配置重置为当前在线 ACTIVE 发布快照。
+     *
+     * @param pageId    页面定义 ID
+     * @param lockToken 编辑锁凭证
+     * @param operator  操作员账号
+     * @return 重置后的草稿 VO
+     */
+    PageDraftVO resetDraftToPublished(Long pageId, String lockToken, String operator);
 }
 

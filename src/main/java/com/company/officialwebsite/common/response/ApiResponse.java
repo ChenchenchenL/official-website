@@ -47,10 +47,17 @@ public class ApiResponse<T> {
     }
 
     /**
-     * 使用业务安全提示构造失败响应，不允许传入 SQL、堆栈或敏感信息。
+     * 使用业务安全提示构造失败响应，缺省 data 字段为 null。
      */
     public static <T> ApiResponse<T> fail(ErrorCode errorCode, String message) {
-        return of(errorCode, message, null, TraceContext.getTraceId());
+        return fail(errorCode, message, null);
+    }
+
+    /**
+     * 构造包含业务数据（如冲突数据）的失败响应。
+     */
+    public static <T> ApiResponse<T> fail(ErrorCode errorCode, String message, T data) {
+        return of(errorCode, message, data, TraceContext.getTraceId());
     }
 
     /**

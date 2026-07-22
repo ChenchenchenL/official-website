@@ -19,6 +19,10 @@ public class PageVersionVO {
     private Integer version;
     private LocalDateTime createdAt;
     private Long rollbackSourceVersionId;
+    /**
+     * 当前版本对应的发布快照状态：ACTIVE 或 SUPERSEDED。
+     */
+    private String snapshotStatus;
 
     public Long getId() {
         return id;
@@ -98,5 +102,13 @@ public class PageVersionVO {
 
     public void setRollbackSourceVersionId(Long rollbackSourceVersionId) {
         this.rollbackSourceVersionId = rollbackSourceVersionId;
+    }
+
+    public String getSnapshotStatus() {
+        return snapshotStatus;
+    }
+
+    public void setSnapshotStatus(String snapshotStatus) {
+        this.snapshotStatus = snapshotStatus;
     }
 }

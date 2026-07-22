@@ -1,6 +1,7 @@
 package com.company.officialwebsite.application.portal;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -10,9 +11,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.company.officialwebsite.common.enums.EditorResourceTypeEnum;
 import com.company.officialwebsite.common.vo.LockStatusVO;
+import com.company.officialwebsite.infrastructure.event.EntityChangedEvent;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDefinitionCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PageDraftSaveDTO;
 import com.company.officialwebsite.modules.pagebuilder.dto.PagePublishDTO;
+import com.company.officialwebsite.modules.pagebuilder.dto.PageRollbackDTO;
+import com.company.officialwebsite.modules.pagebuilder.dto.PreviewCreateDTO;
 import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
 import com.company.officialwebsite.modules.pagebuilder.model.LayoutModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
@@ -29,6 +33,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -70,6 +77,12 @@ class EntityChangedCacheInvalidationIntegrationTest extends BaseAdminControllerI
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ApplicationEventPublisher applicationEventPublisher;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void cleanupBefore() {
@@ -152,26 +165,85 @@ class EntityChangedCacheInvalidationIntegrationTest extends BaseAdminControllerI
         saveDTO.setSchemaJson(schema);
         saveDTO.setVersion(draftVersion);
 
-        mockMvc.perform(put("/admin/api/page-builder/drafts/{pageId}", pageId)
+        String savedDraftResponse = mockMvc.perform(put("/admin/api/page-builder/drafts/{pageId}", pageId)
                 .session(session)
                 .with(csrf())
                 .header("X-Editor-Lock-Token", lockToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(saveDTO)));
+                .content(objectMapper.writeValueAsString(saveDTO)))
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(0, objectMapper.readTree(savedDraftResponse).path("code").asInt());
+        String schemaHash = objectMapper.readTree(savedDraftResponse).path("data").path("schemaHash").asText();
 
-        // 3. 发布页面（写入依赖关系到 cms_page_dependency）
+        // 3. 创建并访问受控预览，确认草稿不会进入正式 Portal 缓存。
+        PreviewCreateDTO previewCreateDTO = new PreviewCreateDTO();
+        previewCreateDTO.setSchemaHash(schemaHash);
+        String previewResponse = mockMvc.perform(post("/admin/api/page-builder/drafts/{pageId}/previews", pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(previewCreateDTO)))
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(0, objectMapper.readTree(previewResponse).path("code").asInt());
+        String previewToken = objectMapper.readTree(previewResponse).path("data").path("previewToken").asText();
+        assertEquals(200, mockMvc.perform(get("/portal/api/page-builder/previews/{previewToken}", previewToken)
+                        .session(session))
+                .andReturn().getResponse().getStatus());
+
+        // 4. 发布页面（写入依赖关系到 cms_page_dependency）。
         PagePublishDTO publishDTO = new PagePublishDTO();
         publishDTO.setChangeSummary("集成测试发布");
         publishDTO.setVersion(draftVersion + 1);
 
-        mockMvc.perform(post("/admin/api/page-builder/pages/{pageId}/publish", pageId)
+        String firstPublishResponse = mockMvc.perform(post("/admin/api/page-builder/pages/{pageId}/publish", pageId)
                 .session(session)
                 .with(csrf())
                 .header("X-Editor-Lock-Token", lockToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(publishDTO)));
+                .content(objectMapper.writeValueAsString(publishDTO)))
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(0, objectMapper.readTree(firstPublishResponse).path("code").asInt());
+        long firstVersionId = objectMapper.readTree(firstPublishResponse).path("data").path("id").asLong();
 
-        // 4. 访问 Portal 接口，触发缓存写入（忽略返回值是否为错误，只要执行一次即可）
+        // 5. 发布第二版，再回滚至首版，验证回滚始终产生新版本而非覆盖历史记录。
+        schema.setName("缓存测试页面第二版");
+        PageDraftSaveDTO secondDraftDTO = new PageDraftSaveDTO();
+        secondDraftDTO.setSchemaJson(schema);
+        secondDraftDTO.setVersion(draftVersion + 1);
+        String secondDraftResponse = mockMvc.perform(put("/admin/api/page-builder/drafts/{pageId}", pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(secondDraftDTO)))
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(0, objectMapper.readTree(secondDraftResponse).path("code").asInt());
+
+        PagePublishDTO secondPublishDTO = new PagePublishDTO();
+        secondPublishDTO.setChangeSummary("集成测试第二版发布");
+        secondPublishDTO.setVersion(draftVersion + 2);
+        assertEquals(0, objectMapper.readTree(mockMvc.perform(post("/admin/api/page-builder/pages/{pageId}/publish", pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(secondPublishDTO)))
+                .andReturn().getResponse().getContentAsString()).path("code").asInt());
+
+        PageRollbackDTO rollbackDTO = new PageRollbackDTO();
+        rollbackDTO.setVersionId(firstVersionId);
+        rollbackDTO.setVersion(draftVersion + 2);
+        rollbackDTO.setChangeSummary("集成测试回滚首版");
+        assertEquals(0, objectMapper.readTree(mockMvc.perform(post("/admin/api/page-builder/pages/{pageId}/rollback", pageId)
+                        .session(session)
+                        .with(csrf())
+                        .header("X-Editor-Lock-Token", lockToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(rollbackDTO)))
+                .andReturn().getResponse().getContentAsString()).path("code").asInt());
+
+        // 6. 访问 Portal 接口，触发已回滚版本的正式缓存写入。
         mockMvc.perform(get("/portal/api/page-builder/pages")
                 .param("routePath", ROUTE_PATH));
 
@@ -184,16 +256,20 @@ class EntityChangedCacheInvalidationIntegrationTest extends BaseAdminControllerI
         assertTrue(Boolean.TRUE.equals(redisTemplate.hasKey(CACHE_KEY_META)),
                 "元数据缓存 key 应存在");
 
-        // 注意：此处需要在事务提交后触发 EntityChangedEvent，
-        // 因此本测试使用 @Commit，事务提交后事件监听器才会执行。
-        // 本断言模拟：产品更新后（在另一个提交的事务中），缓存会被清除。
-        // 完整端到端测试需要产品 API 数据配合，此处验证依赖记录写入。
-
         // 验证依赖记录已写入 cms_page_dependency
         int depCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM cms_page_dependency WHERE page_id = ? AND deleted_marker = 0",
                 Integer.class, pageId);
         assertTrue(depCount > 0, "页面依赖记录应已写入 cms_page_dependency");
+
+        // 5. 在独立事务中模拟产品服务提交后的实体变更事件。
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.executeWithoutResult(status -> applicationEventPublisher.publishEvent(
+                EntityChangedEvent.of(this, "product", "Product", "1")));
+
+        // 6. AFTER_COMMIT + @Async 监听器必须删除共享 Redis 中的页面和 SEO 缓存。
+        assertCacheRemoved(CACHE_KEY_PAGE);
+        assertCacheRemoved(CACHE_KEY_META);
     }
 
     /**
@@ -236,5 +312,19 @@ class EntityChangedCacheInvalidationIntegrationTest extends BaseAdminControllerI
         jdbcTemplate.update(
                 "DELETE FROM cms_page_definition WHERE page_key = ?",
                 PAGE_KEY);
+    }
+
+    /**
+     * 等待异步 AFTER_COMMIT 监听器完成共享 Redis 缓存失效，避免用固定 sleep 造成脆弱测试。
+     */
+    private void assertCacheRemoved(String cacheKey) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (!Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+                return;
+            }
+            Thread.sleep(50L);
+        }
+        org.junit.jupiter.api.Assertions.fail("实体变更提交后缓存未失效: " + cacheKey);
     }
 }

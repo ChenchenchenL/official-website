@@ -21,4 +21,13 @@ public interface PageCacheInvalidationService {
      * @param pageId 已发布或回滚的页面 ID
      */
     void invalidatePageAndRelatedCaches(Long pageId);
+
+    /**
+     * 失效指定页面的 Portal 渲染与 SEO 缓存，支持路由变更时同时清理旧路由与新路由 Key。
+     *
+     * @param pageId       页面 ID（可为 null，若非空则同步计算关联受影响页面）
+     * @param oldRoutePath 变更前的旧路由路径（可为 null）
+     * @param newRoutePath 变更后的新路由路径（可为 null）
+     */
+    void invalidatePageCaches(Long pageId, String oldRoutePath, String newRoutePath);
 }

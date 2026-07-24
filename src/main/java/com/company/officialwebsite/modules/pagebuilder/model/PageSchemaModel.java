@@ -7,11 +7,20 @@ import java.util.List;
  */
 public class PageSchemaModel {
 
+    private Integer schemaVersion = 1;
     private String pageKey;
     private String name;
     private LayoutModel layout;
     private List<SectionModel> sections;
     private SeoModel seo;
+
+    public Integer getSchemaVersion() {
+        return schemaVersion;
+    }
+
+    public void setSchemaVersion(Integer schemaVersion) {
+        this.schemaVersion = schemaVersion;
+    }
 
     public String getPageKey() {
         return pageKey;

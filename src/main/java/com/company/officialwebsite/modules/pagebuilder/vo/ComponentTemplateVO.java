@@ -116,4 +116,28 @@ public class ComponentTemplateVO {
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+
+    public Map<String, Object> getPropsSchema() {
+        return schemaDefinitionJson;
+    }
+
+    public Map<String, Object> getStyleSchema() {
+        if (schemaDefinitionJson != null && schemaDefinitionJson.containsKey("styleSchema")) {
+            Object obj = schemaDefinitionJson.get("styleSchema");
+            if (obj instanceof Map) {
+                return (Map<String, Object>) obj;
+            }
+        }
+        return Map.of("supportedKeys", Set.of("fontSize", "color", "backgroundColor", "textAlign", "padding", "margin", "opacity"));
+    }
+
+    public Map<String, Object> getLayoutSchema() {
+        if (schemaDefinitionJson != null && schemaDefinitionJson.containsKey("layoutSchema")) {
+            Object obj = schemaDefinitionJson.get("layoutSchema");
+            if (obj instanceof Map) {
+                return (Map<String, Object>) obj;
+            }
+        }
+        return Map.of("supportedPositions", Set.of("static", "relative", "absolute"));
+    }
 }

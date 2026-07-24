@@ -23,6 +23,7 @@ import com.company.officialwebsite.modules.pagebuilder.mapper.PageDraftMapper;
 import com.company.officialwebsite.modules.pagebuilder.mapper.PagePublishSnapshotMapper;
 import com.company.officialwebsite.modules.pagebuilder.mapper.PageVersionMapper;
 import com.company.officialwebsite.modules.pagebuilder.service.PageCacheInvalidationService;
+import com.company.officialwebsite.modules.pagebuilder.service.PageSchemaUpgradeService;
 import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
@@ -80,6 +81,7 @@ public class PagePublishServiceImpl implements PagePublishService {
     private final AuditLogService auditLogService;
     private final PortalCacheSupport portalCacheSupport;
     private final PageCacheInvalidationService pageCacheInvalidationService;
+    private final PageSchemaUpgradeService pageSchemaUpgradeService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public PagePublishServiceImpl(
@@ -98,6 +100,7 @@ public class PagePublishServiceImpl implements PagePublishService {
             AuditLogService auditLogService,
             PortalCacheSupport portalCacheSupport,
             PageCacheInvalidationService pageCacheInvalidationService,
+            PageSchemaUpgradeService pageSchemaUpgradeService,
             com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.pageDefinitionMapper = pageDefinitionMapper;
         this.pageDraftMapper = pageDraftMapper;
@@ -114,6 +117,7 @@ public class PagePublishServiceImpl implements PagePublishService {
         this.auditLogService = auditLogService;
         this.portalCacheSupport = portalCacheSupport;
         this.pageCacheInvalidationService = pageCacheInvalidationService;
+        this.pageSchemaUpgradeService = pageSchemaUpgradeService;
         this.objectMapper = objectMapper;
     }
 
@@ -230,6 +234,9 @@ public class PagePublishServiceImpl implements PagePublishService {
             log.warn("rollbackPage failed: target version not found or pageId mismatch");
             throw new BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "指定的历史版本不存在");
         }
+
+        // 历史版本向后兼容平滑升级（若历史快照版本较低，升级至 CURRENT_SCHEMA_VERSION）
+        pageSchemaUpgradeService.upgradeToCurrent(targetVersion.getSchemaJson());
 
         // 草稿乐观锁版本校验，防止并发覆盖
         PageDraftEntity draft = pageDraftMapper.selectOne(

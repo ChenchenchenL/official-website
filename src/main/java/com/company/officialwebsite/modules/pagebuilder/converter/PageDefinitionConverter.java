@@ -31,6 +31,8 @@ public class PageDefinitionConverter {
         vo.setVisible(entity.getVisible());
         vo.setSortOrder(entity.getSortOrder());
         vo.setVersion(entity.getVersion());
+        vo.setSourcePageId(entity.getSourcePageId());
+        vo.setSourceTemplateCode(entity.getSourceTemplateCode());
         vo.setCreatedAt(entity.getCreatedAt());
         vo.setUpdatedAt(entity.getUpdatedAt());
         return vo;

@@ -9,9 +9,11 @@ public class SectionModel {
 
     private String id;
     private String component;
+    private ComponentLayoutModel layout;
     private Map<String, Object> props;
     private BindingModel binding;
     private Map<String, Object> style;
+    private Map<String, SectionResponsiveModel> responsive;
     private Boolean visible;
 
     public String getId() {
@@ -52,6 +54,22 @@ public class SectionModel {
 
     public void setStyle(Map<String, Object> style) {
         this.style = style;
+    }
+
+    public ComponentLayoutModel getLayout() {
+        return layout;
+    }
+
+    public void setLayout(ComponentLayoutModel layout) {
+        this.layout = layout;
+    }
+
+    public Map<String, SectionResponsiveModel> getResponsive() {
+        return responsive;
+    }
+
+    public void setResponsive(Map<String, SectionResponsiveModel> responsive) {
+        this.responsive = responsive;
     }
 
     public Boolean getVisible() {

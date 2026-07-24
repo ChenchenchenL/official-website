@@ -45,6 +45,16 @@ public class PageDefinitionEntity extends BaseEntity {
      */
     private Integer sortOrder;
 
+    /**
+     * 派生来源页面 ID
+     */
+    private Long sourcePageId;
+
+    /**
+     * 派生来源页面模板编码
+     */
+    private String sourceTemplateCode;
+
     public String getPageKey() {
         return pageKey;
     }
@@ -99,5 +109,21 @@ public class PageDefinitionEntity extends BaseEntity {
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public Long getSourcePageId() {
+        return sourcePageId;
+    }
+
+    public void setSourcePageId(Long sourcePageId) {
+        this.sourcePageId = sourcePageId;
+    }
+
+    public String getSourceTemplateCode() {
+        return sourceTemplateCode;
+    }
+
+    public void setSourceTemplateCode(String sourceTemplateCode) {
+        this.sourceTemplateCode = sourceTemplateCode;
     }
 }

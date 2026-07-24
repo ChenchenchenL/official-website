@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -121,13 +122,14 @@ public class PageBindingResolutionServiceImpl implements PageBindingResolutionSe
 
     private Object resolveProduct(Map<String, Object> query) {
         List<PortalProductVO> list = productService.getPortalProducts();
-        if (query == null) {
+        if (query == null || query.isEmpty()) {
             return list;
         }
+
+        // 1. 单产品 ID 过滤
         if (query.containsKey("id") && query.get("id") != null) {
-            String idStr = query.get("id").toString().trim();
             try {
-                long targetId = Long.parseLong(idStr);
+                long targetId = Long.parseLong(query.get("id").toString().trim());
                 return list.stream()
                         .filter(p -> Objects.equals(p.getId(), targetId))
                         .findFirst()
@@ -136,37 +138,98 @@ public class PageBindingResolutionServiceImpl implements PageBindingResolutionSe
                 return null;
             }
         }
-        if (query.containsKey("ids") && query.get("ids") instanceof List) {
-            List<?> ids = (List<?>) query.get("ids");
-            List<Long> targetIds = ids.stream()
-                    .map(o -> {
-                        try {
-                            return Long.parseLong(o.toString());
-                        } catch (NumberFormatException e) {
-                            return null;
-                        }
-                    })
-                    .filter(Objects::nonNull)
-                    .toList();
-            return list.stream()
-                    .filter(p -> targetIds.contains(p.getId()))
-                    .collect(Collectors.toList());
+
+        // 2. 批量产品 ID 列表过滤
+        if (query.containsKey("ids")) {
+            Object idsObj = query.get("ids");
+            List<Long> targetIds = parseLongList(idsObj);
+            if (!targetIds.isEmpty()) {
+                list = list.stream()
+                        .filter(p -> targetIds.contains(p.getId()))
+                        .collect(Collectors.toList());
+            }
         }
+
+        // 3. limit / pageSize 数量截取
+        int limit = getLimitFromQuery(query);
+        if (limit > 0 && list.size() > limit) {
+            return list.stream().limit(limit).collect(Collectors.toList());
+        }
+
         return list;
     }
 
     private Object resolveCase(Map<String, Object> query) {
         List<PortalCaseVO> list = caseService.getPortalCases();
-        if (query == null) {
+        if (query == null || query.isEmpty()) {
             return list;
         }
-        if (query.containsKey("title") && query.get("title") != null) {
-            String title = query.get("title").toString().trim();
-            return list.stream()
-                    .filter(c -> Objects.equals(c.getTitle(), title))
-                    .findFirst()
-                    .orElse(null);
+
+        // 1. 单案例 ID 过滤
+        if (query.containsKey("id") && query.get("id") != null) {
+            try {
+                long targetId = Long.parseLong(query.get("id").toString().trim());
+                return list.stream()
+                        .filter(c -> Objects.equals(c.getId(), targetId))
+                        .findFirst()
+                        .orElse(null);
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
+
+        // 2. 批量案例 ID 列表过滤
+        if (query.containsKey("ids")) {
+            Object idsObj = query.get("ids");
+            List<Long> targetIds = parseLongList(idsObj);
+            if (!targetIds.isEmpty()) {
+                list = list.stream()
+                        .filter(c -> targetIds.contains(c.getId()))
+                        .collect(Collectors.toList());
+            }
+        }
+
+        // 3. limit / pageSize 数量截取
+        int limit = getLimitFromQuery(query);
+        if (limit > 0 && list.size() > limit) {
+            return list.stream().limit(limit).collect(Collectors.toList());
+        }
+
         return list;
+    }
+
+    private List<Long> parseLongList(Object val) {
+        if (val == null) {
+            return Collections.emptyList();
+        }
+        if (val instanceof List) {
+            List<?> list = (List<?>) val;
+            return list.stream()
+                    .map(o -> {
+                        try {
+                            return Long.parseLong(o.toString().trim());
+                        } catch (NumberFormatException e) {
+                            return null;
+                        }
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+        }
+        return Collections.emptyList();
+    }
+
+    private int getLimitFromQuery(Map<String, Object> query) {
+        Object limitObj = query.get("limit");
+        if (limitObj == null) {
+            limitObj = query.get("pageSize");
+        }
+        if (limitObj != null) {
+            try {
+                return Integer.parseInt(limitObj.toString().trim());
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
     }
 }

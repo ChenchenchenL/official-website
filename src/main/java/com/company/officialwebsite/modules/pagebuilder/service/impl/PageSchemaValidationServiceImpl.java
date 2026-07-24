@@ -8,9 +8,11 @@ import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SeoModel;
 import com.company.officialwebsite.modules.pagebuilder.service.ComponentTemplateService;
+import com.company.officialwebsite.modules.pagebuilder.service.PageSchemaUpgradeService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageSchemaValidationService;
 import com.company.officialwebsite.modules.pagebuilder.vo.ComponentTemplateVO;
 import com.company.officialwebsite.modules.media.service.MediaAssetService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Safelist;
 import org.slf4j.Logger;
@@ -35,9 +37,7 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
     private static final String MSG_PAGE_KEY_TOO_LONG = "页面唯一Key标识(pageKey)长度不能超过64字符";
     private static final String MSG_PAGE_NAME_BLANK = "页面名称(name)不能为空";
     private static final String MSG_PAGE_NAME_TOO_LONG = "页面名称(name)长度不能超过128字符";
-    private static final String MSG_LAYOUT_INVALID = "页面布局配置(layout)不正确";
     private static final String MSG_SECTIONS_EMPTY = "页面必须至少配置一个组件区块(sections)";
-    private static final String MSG_SECTIONS_TOO_MANY = "单个页面的组件区块数量不能超过50个";
     private static final String MSG_SEO_TITLE_TOO_LONG = "SEO标题长度不能超过128字符";
     private static final String MSG_SEO_DESC_TOO_LONG = "SEO描述长度不能超过255字符";
     private static final String MSG_SECTION_ID_BLANK = "区块组件节点实例唯一ID(id)不能为空";
@@ -60,12 +60,18 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
 
     private final ComponentTemplateService templateService;
     private final MediaAssetService mediaAssetService;
+    private final PageSchemaUpgradeService pageSchemaUpgradeService;
+    private final ObjectMapper objectMapper;
 
     public PageSchemaValidationServiceImpl(
             ComponentTemplateService templateService,
-            MediaAssetService mediaAssetService) {
+            MediaAssetService mediaAssetService,
+            PageSchemaUpgradeService pageSchemaUpgradeService,
+            ObjectMapper objectMapper) {
         this.templateService = templateService;
         this.mediaAssetService = mediaAssetService;
+        this.pageSchemaUpgradeService = pageSchemaUpgradeService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -73,6 +79,12 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
         if (model == null) {
             logAndThrow(MSG_SCHEMA_NULL);
         }
+
+        // 0. Schema 容量与配额限制校验 (字节数 <= 512KB, 区块数 <= 50)
+        LayoutStyleValidationHelper.validateQuota(model, objectMapper);
+
+        // 0.1 Schema 版本校验与平滑升级
+        pageSchemaUpgradeService.upgradeToCurrent(model);
 
         // 1. 基础字段非空及长度校验
         if (model.getPageKey() == null || model.getPageKey().trim().isEmpty()) {
@@ -89,9 +101,8 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
             logAndThrow(MSG_PAGE_NAME_TOO_LONG);
         }
 
-        if (model.getLayout() == null || model.getLayout().getType() == null || model.getLayout().getType().trim().isEmpty()) {
-            logAndThrow(MSG_LAYOUT_INVALID);
-        }
+        // 页面级布局模式白名单校验 (flow, grid, absolute, default)
+        LayoutStyleValidationHelper.validatePageLayout(model.getLayout());
 
         // 2. SEO 信息校验 (resolves RW-4)
         SeoModel seo = model.getSeo();
@@ -104,13 +115,10 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
             }
         }
 
-        // 3. 嵌套/组件数量超限校验 (限制最大50个区块)
+        // 3. 嵌套/组件非空校验
         List<SectionModel> sections = model.getSections();
         if (sections == null || sections.isEmpty()) {
             logAndThrow(MSG_SECTIONS_EMPTY);
-        }
-        if (sections.size() > 50) {
-            logAndThrow(MSG_SECTIONS_TOO_MANY);
         }
 
         // 4. 各组件及内部属性的白名单、类型、长度与安全校验
@@ -128,6 +136,11 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
         if (componentCode == null || componentCode.trim().isEmpty()) {
             logAndThrow(MSG_SECTION_COMP_BLANK);
         }
+
+        // 组件级 layout、style 及 responsive 响应式断点属性白名单、坐标尺寸与 zIndex 范围校验
+        LayoutStyleValidationHelper.validateComponentLayout(section.getLayout(), componentCode);
+        LayoutStyleValidationHelper.validateComponentStyle(section.getStyle(), componentCode);
+        LayoutStyleValidationHelper.validateSectionResponsive(section.getResponsive(), componentCode);
 
         // 4.1 校验组件是否注册且启用
         ComponentTemplateVO template = templateService.getTemplateByCode(componentCode);
@@ -165,6 +178,9 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
                         }
                     }
                 }
+
+                // 校验绑定筛选参数 query 白名单、数量与排序枚举
+                BindingQueryValidationHelper.validateBindingQuery(binding.getQuery(), componentCode);
             }
         }
 
@@ -206,9 +222,10 @@ public class PageSchemaValidationServiceImpl implements PageSchemaValidationServ
 
                             String valStr = val.toString();
 
-                            // 长度校验
-                            if (maxLength != null && valStr.length() > maxLength) {
-                                logAndThrow(String.format(MSG_PROP_TOO_LONG_FMT, componentCode, fieldKey, maxLength));
+                            // 长度校验（若模板未配置 maxLength 显式上限，以 MAX_SINGLE_TEXT_LENGTH=10000 作为安全兜底）
+                            int effectiveMaxLen = (maxLength != null) ? maxLength : LayoutStyleValidationHelper.MAX_SINGLE_TEXT_LENGTH;
+                            if (valStr.length() > effectiveMaxLen) {
+                                logAndThrow(String.format(MSG_PROP_TOO_LONG_FMT, componentCode, fieldKey, effectiveMaxLen));
                             }
 
                             // 链接协议校验

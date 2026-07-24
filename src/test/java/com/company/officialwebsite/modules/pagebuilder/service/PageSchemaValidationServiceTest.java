@@ -5,7 +5,10 @@ import static org.mockito.Mockito.*;
 import com.company.officialwebsite.common.enums.ErrorCode;
 import com.company.officialwebsite.common.exception.BusinessException;
 import com.company.officialwebsite.modules.pagebuilder.model.BindingModel;
+import com.company.officialwebsite.modules.pagebuilder.model.ComponentLayoutModel;
 import com.company.officialwebsite.modules.pagebuilder.model.LayoutModel;
+import com.company.officialwebsite.modules.pagebuilder.model.SectionResponsiveModel;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SectionModel;
 import com.company.officialwebsite.modules.pagebuilder.model.SeoModel;
@@ -33,11 +36,17 @@ class PageSchemaValidationServiceTest {
     @Mock
     private MediaAssetService mediaAssetService;
 
+    @Mock
+    private PageSchemaUpgradeService pageSchemaUpgradeService;
+
+    private ObjectMapper objectMapper = new ObjectMapper();
+
     private PageSchemaValidationService validationService;
 
     @BeforeEach
     void setUp() {
-        validationService = new PageSchemaValidationServiceImpl(templateService, mediaAssetService);
+        validationService = new PageSchemaValidationServiceImpl(
+                templateService, mediaAssetService, pageSchemaUpgradeService, objectMapper);
     }
 
     private PageSchemaModel createValidBaseModel() {
@@ -46,7 +55,7 @@ class PageSchemaValidationServiceTest {
         model.setName("首页");
 
         LayoutModel layout = new LayoutModel();
-        layout.setType("vertical");
+        layout.setType("flow");
         model.setLayout(layout);
 
         SectionModel section = new SectionModel();
@@ -347,5 +356,392 @@ class PageSchemaValidationServiceTest {
         );
         Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
         Assertions.assertTrue(ex.getMessage().contains("绑定的媒体资源不可用或不存在"));
+    }
+
+    @Test
+    void validateSchema_shouldSucceed_whenLayoutAndStyleAreValid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        ComponentLayoutModel layout = new ComponentLayoutModel();
+        layout.setPosition("absolute");
+        layout.setX(120);
+        layout.setY(48);
+        layout.setWidth(360);
+        layout.setHeight(72);
+        layout.setZIndex(2);
+        section.setLayout(layout);
+
+        Map<String, Object> style = new HashMap<>();
+        style.put("color", "#111111");
+        style.put("fontSize", "24px");
+        style.put("textAlign", "left");
+        style.put("opacity", 0.9);
+        section.setStyle(style);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        Assertions.assertDoesNotThrow(() -> validationService.validateSchema(model));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenPageLayoutTypeIsUnsupported() {
+        PageSchemaModel model = createValidBaseModel();
+        model.getLayout().setType("custom_unsupported_mode");
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("不支持的页面布局模式"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenComponentZIndexIsExceeded() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        ComponentLayoutModel layout = new ComponentLayoutModel();
+        layout.setZIndex(99999);
+        section.setLayout(layout);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("zIndex 超出允许范围"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenStyleContainsDangerousScript() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, Object> style = new HashMap<>();
+        style.put("color", "red; background: url('http://evil.com')");
+        section.setStyle(style);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("包含非法危险脚本字符") || ex.getMessage().contains("颜色格式不合法"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenStyleAttributeIsNotWhitelisted() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, Object> style = new HashMap<>();
+        style.put("evilNonWhitelistedProp", "some_val");
+        section.setStyle(style);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("未允许的样式属性"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenSchemaByteSizeExceeds512KB() {
+        PageSchemaModel model = createValidBaseModel();
+        // Generate a huge text attribute > 512KB
+        model.setName("a".repeat(530000));
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("体积超出限制"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenCoordinateExceedsLimit() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        ComponentLayoutModel layout = new ComponentLayoutModel();
+        layout.setX(20000);
+        section.setLayout(layout);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("超出允许范围"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenOpacityIsInvalid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, Object> style = new HashMap<>();
+        style.put("opacity", 2.5);
+        section.setStyle(style);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("透明度(opacity)必须在 [0.0, 1.0] 范围内"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenPositionIsInvalid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        ComponentLayoutModel layout = new ComponentLayoutModel();
+        layout.setPosition("invalid_position_type");
+        section.setLayout(layout);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("定位模式(position)不合法"));
+    }
+
+    @Test
+    void validateSchema_shouldSucceed_whenResponsiveBreakpointsAreValid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, SectionResponsiveModel> responsive = new HashMap<>();
+
+        SectionResponsiveModel mobileResp = new SectionResponsiveModel();
+        ComponentLayoutModel mobileLayout = new ComponentLayoutModel();
+        mobileLayout.setPosition("relative");
+        mobileLayout.setWidth("100%");
+        mobileResp.setLayout(mobileLayout);
+
+        Map<String, Object> mobileStyle = new HashMap<>();
+        mobileStyle.put("fontSize", "16px");
+        mobileResp.setStyle(mobileStyle);
+
+        responsive.put("mobile", mobileResp);
+        section.setResponsive(responsive);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        Assertions.assertDoesNotThrow(() -> validationService.validateSchema(model));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenBreakpointKeyIsInvalid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, SectionResponsiveModel> responsive = new HashMap<>();
+        responsive.put("invalid_breakpoint_key", new SectionResponsiveModel());
+        section.setResponsive(responsive);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("响应式断点标识不合法"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenBreakpointKeyIsEmpty() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, SectionResponsiveModel> responsive = new HashMap<>();
+        responsive.put("   ", new SectionResponsiveModel());
+        section.setResponsive(responsive);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("响应式断点标识不能为空"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenResponsiveLayoutZIndexIsExceeded() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, SectionResponsiveModel> responsive = new HashMap<>();
+        SectionResponsiveModel mobileResp = new SectionResponsiveModel();
+        ComponentLayoutModel mobileLayout = new ComponentLayoutModel();
+        mobileLayout.setZIndex(99999);
+        mobileResp.setLayout(mobileLayout);
+
+        responsive.put("mobile", mobileResp);
+        section.setResponsive(responsive);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("zIndex 超出允许范围"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenResponsiveStyleContainsDangerousScript() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        Map<String, SectionResponsiveModel> responsive = new HashMap<>();
+        SectionResponsiveModel mobileResp = new SectionResponsiveModel();
+        Map<String, Object> mobileStyle = new HashMap<>();
+        mobileStyle.put("color", "red; background: url('http://evil.com')");
+        mobileResp.setStyle(mobileStyle);
+
+        responsive.put("mobile", mobileResp);
+        section.setResponsive(responsive);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("包含非法危险脚本字符") || ex.getMessage().contains("颜色格式不合法"));
+    }
+
+    @Test
+    void validateSchema_shouldSucceed_whenBindingQueryIsValid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("ENTITY");
+        binding.setSource("product");
+
+        Map<String, Object> query = new HashMap<>();
+        query.put("id", 100L);
+        query.put("categoryId", 10L);
+        query.put("limit", 10);
+        query.put("sortOrder", "LATEST");
+        binding.setQuery(query);
+        section.setBinding(binding);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        Assertions.assertDoesNotThrow(() -> validationService.validateSchema(model));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenBindingQueryKeyIsNotWhitelisted() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("ENTITY");
+        binding.setSource("product");
+
+        Map<String, Object> query = new HashMap<>();
+        query.put("customSQLKey", "SELECT * FROM users");
+        binding.setQuery(query);
+        section.setBinding(binding);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("包含非允许的参数Key"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenBindingQueryIdsExceedLimit() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("ENTITY");
+        binding.setSource("product");
+
+        Map<String, Object> query = new HashMap<>();
+        List<Long> hugeIds = new ArrayList<>();
+        for (long i = 1; i <= 51; i++) {
+            hugeIds.add(i);
+        }
+        query.put("ids", hugeIds);
+        binding.setQuery(query);
+        section.setBinding(binding);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("单次最多查询 50 个 ID"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenBindingQueryLimitExceeds50() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("ENTITY");
+        binding.setSource("product");
+
+        Map<String, Object> query = new HashMap<>();
+        query.put("limit", 100);
+        binding.setQuery(query);
+        section.setBinding(binding);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("必须在 [1, 50] 范围内"));
+    }
+
+    @Test
+    void validateSchema_shouldThrow_whenBindingQuerySortOrderIsInvalid() {
+        PageSchemaModel model = createValidBaseModel();
+        SectionModel section = model.getSections().get(0);
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("ENTITY");
+        binding.setSource("product");
+
+        Map<String, Object> query = new HashMap<>();
+        query.put("sortOrder", "INVALID_SORT_ENUM");
+        binding.setQuery(query);
+        section.setBinding(binding);
+
+        ComponentTemplateVO template = createHeroBannerTemplate();
+        when(templateService.getTemplateByCode("HeroBanner")).thenReturn(template);
+
+        BusinessException ex = Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationService.validateSchema(model)
+        );
+        Assertions.assertEquals(ErrorCode.COMMON_PARAM_INVALID, ex.getErrorCode());
+        Assertions.assertTrue(ex.getMessage().contains("排序方式不合法"));
     }
 }

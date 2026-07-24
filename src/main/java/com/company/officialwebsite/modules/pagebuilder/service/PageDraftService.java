@@ -34,10 +34,22 @@ public interface PageDraftService {
      * 将指定页面的草稿配置重置为当前在线 ACTIVE 发布快照。
      *
      * @param pageId    页面定义 ID
-     * @param lockToken 编辑锁凭证
      * @param operator  操作员账号
      * @return 重置后的草稿 VO
      */
     PageDraftVO resetDraftToPublished(Long pageId, String lockToken, String operator);
+
+    /**
+     * 根据 SchemaModel 直接保存草稿。
+     *
+     * @param pageId      页面定义 ID
+     * @param schemaModel Schema 数据模型
+     * @param remark      编辑会话备注
+     * @param version     并发乐观锁版本号
+     * @param lockToken   编辑锁凭证
+     * @param operator    操作员账号
+     * @return 更新后的草稿 VO
+     */
+    PageDraftVO saveDraft(Long pageId, com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel schemaModel, String remark, Integer version, String lockToken, String operator);
 }
 

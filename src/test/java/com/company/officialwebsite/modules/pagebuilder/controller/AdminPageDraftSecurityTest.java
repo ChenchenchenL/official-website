@@ -162,4 +162,51 @@ class AdminPageDraftSecurityTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(10009));
     }
+
+    @Test
+    @DisplayName("保存草稿时提交不支持的 schemaVersion (如 99 或 -1) 返回 HTTP 400 与错误码 10012")
+    void saveDraft_unsupportedSchemaVersion_shouldReturn400Code10012() throws Exception {
+        PageDefinitionEntity page = new PageDefinitionEntity();
+        page.setPageKey("ver_test_page");
+        page.setName("版本测试");
+        page.setRoutePath("/ver-test");
+        page.setPageType("NORMAL");
+        page.setStatus("ENABLED");
+        page.setVisible(true);
+        page.setSortOrder(1);
+        pageDefinitionMapper.insert(page);
+
+        PageSchemaModel schema = new PageSchemaModel();
+        schema.setPageKey("ver_test_page");
+        schema.setName("版本测试");
+
+        PageDraftEntity draft = new PageDraftEntity();
+        draft.setPageId(page.getId());
+        draft.setSchemaJson(schema);
+        draft.setSchemaHash("hash_v1");
+        draft.setVersion(0);
+        pageDraftMapper.insert(draft);
+
+        LockStatusVO lock = editorLockService.acquireLock(EditorResourceTypeEnum.PAGE, page.getId(), null, "admin_v", "管理员", false);
+
+        // 提交 schemaVersion = 99
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + page.getId())
+                        .with(csrf())
+                        .with(user("admin_v").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0,\"schemaJson\":{\"schemaVersion\":99,\"pageKey\":\"ver_test_page\",\"name\":\"版本测试\",\"layout\":{\"type\":\"default\"},\"sections\":[{\"id\":\"sec1\",\"component\":\"HeroBanner\",\"props\":{\"title\":\"欢迎\"}}]}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(90008));
+
+        // 提交 schemaVersion = -1
+        mockMvc.perform(put("/admin/api/page-builder/drafts/" + page.getId())
+                        .with(csrf())
+                        .with(user("admin_v").roles("ADMINISTRATOR"))
+                        .header("X-Editor-Lock-Token", lock.getLockToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0,\"schemaJson\":{\"schemaVersion\":-1,\"pageKey\":\"ver_test_page\",\"name\":\"版本测试\",\"layout\":{\"type\":\"default\"},\"sections\":[{\"id\":\"sec1\",\"component\":\"HeroBanner\",\"props\":{\"title\":\"欢迎\"}}]}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(90008));
+    }
 }

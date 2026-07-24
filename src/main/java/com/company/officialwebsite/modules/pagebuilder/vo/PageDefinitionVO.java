@@ -19,6 +19,9 @@ public class PageDefinitionVO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    private Long sourcePageId;
+    private String sourceTemplateCode;
+
     public Long getId() {
         return id;
     }
@@ -105,5 +108,21 @@ public class PageDefinitionVO {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getSourcePageId() {
+        return sourcePageId;
+    }
+
+    public void setSourcePageId(Long sourcePageId) {
+        this.sourcePageId = sourcePageId;
+    }
+
+    public String getSourceTemplateCode() {
+        return sourceTemplateCode;
+    }
+
+    public void setSourceTemplateCode(String sourceTemplateCode) {
+        this.sourceTemplateCode = sourceTemplateCode;
     }
 }

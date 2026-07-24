@@ -184,4 +184,50 @@ class PageBindingResolutionServiceTest {
                 com.company.officialwebsite.common.exception.BusinessException.class,
                 () -> service.resolveBinding(binding));
     }
+
+    @Test
+    void resolveBinding_shouldFilterProductById_whenQueryContainsId() {
+        com.company.officialwebsite.modules.product.vo.PortalProductVO p1 = new com.company.officialwebsite.modules.product.vo.PortalProductVO();
+        p1.setId(100L);
+        p1.setName("Product 100");
+
+        com.company.officialwebsite.modules.product.vo.PortalProductVO p2 = new com.company.officialwebsite.modules.product.vo.PortalProductVO();
+        p2.setId(200L);
+        p2.setName("Product 200");
+
+        when(productService.getPortalProducts()).thenReturn(java.util.List.of(p1, p2));
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("ENTITY");
+        binding.setSource("product");
+        binding.setQuery(java.util.Map.of("id", "100"));
+
+        Object result = service.resolveBinding(binding);
+
+        assertNotNull(result);
+        org.junit.jupiter.api.Assertions.assertEquals(p1, result);
+    }
+
+    @Test
+    void resolveBinding_shouldFilterCasesByIdsAndLimit_whenQueryContainsIdsAndLimit() {
+        com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO c1 = new com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO();
+        c1.setId(1L);
+
+        com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO c2 = new com.company.officialwebsite.modules.casecenter.vo.PortalCaseVO();
+        c2.setId(2L);
+
+        when(caseService.getPortalCases()).thenReturn(java.util.List.of(c1, c2));
+
+        BindingModel binding = new BindingModel();
+        binding.setMode("AGGREGATE");
+        binding.setSource("case");
+        binding.setQuery(java.util.Map.of("ids", java.util.List.of(1L, 2L), "limit", 1));
+
+        Object result = service.resolveBinding(binding);
+
+        assertNotNull(result);
+        org.junit.jupiter.api.Assertions.assertTrue(result instanceof java.util.List);
+        java.util.List<?> list = (java.util.List<?>) result;
+        org.junit.jupiter.api.Assertions.assertEquals(1, list.size());
+    }
 }

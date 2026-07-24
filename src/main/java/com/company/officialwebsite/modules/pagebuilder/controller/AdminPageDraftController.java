@@ -29,9 +29,12 @@ public class AdminPageDraftController {
     private static final Logger log = LoggerFactory.getLogger(AdminPageDraftController.class);
 
     private final PageDraftService pageDraftService;
+    private final com.company.officialwebsite.modules.pagebuilder.service.PageDraftHistoryService pageDraftHistoryService;
 
-    public AdminPageDraftController(PageDraftService pageDraftService) {
+    public AdminPageDraftController(PageDraftService pageDraftService,
+                                   com.company.officialwebsite.modules.pagebuilder.service.PageDraftHistoryService pageDraftHistoryService) {
         this.pageDraftService = pageDraftService;
+        this.pageDraftHistoryService = pageDraftHistoryService;
     }
 
     /**
@@ -82,6 +85,45 @@ public class AdminPageDraftController {
         String username = resolveUsername(principal);
         log.info("admin reset page draft to published pageId={} user={}", pageId, username);
         return ApiResponse.success(pageDraftService.resetDraftToPublished(pageId, lockToken, username));
+    }
+
+    /**
+     * 分页查询指定页面的草稿历史修订摘要列表。
+     */
+    @GetMapping("/{pageId}/revisions")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<com.company.officialwebsite.common.response.PageResult<com.company.officialwebsite.modules.pagebuilder.vo.PageDraftHistoryVO>> getRevisions(
+            @PathVariable Long pageId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "1") int pageNo,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "10") int pageSize) {
+        log.info("admin get page draft revisions pageId={} pageNo={} pageSize={}", pageId, pageNo, pageSize);
+        return ApiResponse.success(pageDraftHistoryService.getRevisionsPage(pageId, pageNo, pageSize));
+    }
+
+    /**
+     * 获取指定草稿历史修订的完整详情 (包含 schemaJson)。
+     */
+    @GetMapping("/{pageId}/revisions/{revisionId}")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<com.company.officialwebsite.modules.pagebuilder.vo.PageDraftHistoryVO> getRevisionDetail(
+            @PathVariable Long pageId,
+            @PathVariable Long revisionId) {
+        log.info("admin get page draft revision detail pageId={} revisionId={}", pageId, revisionId);
+        return ApiResponse.success(pageDraftHistoryService.getRevisionDetail(pageId, revisionId));
+    }
+
+    /**
+     * 恢复指定的历史草稿修订覆盖为当前草稿。
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/{pageId}/revisions/{revisionId}/restore")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<PageDraftVO> restoreRevision(
+            @PathVariable Long pageId,
+            @PathVariable Long revisionId,
+            @org.springframework.web.bind.annotation.RequestParam Integer version,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Editor-Lock-Token", required = false) String lockToken) {
+        log.info("admin restore page draft revision pageId={} revisionId={} version={}", pageId, revisionId, version);
+        return ApiResponse.success(pageDraftHistoryService.restoreRevision(pageId, revisionId, version, lockToken));
     }
 
     private String resolveUsername(Object principal) {

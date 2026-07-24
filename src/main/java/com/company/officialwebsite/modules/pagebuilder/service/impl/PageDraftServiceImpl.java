@@ -16,10 +16,13 @@ import com.company.officialwebsite.modules.pagebuilder.mapper.PagePublishSnapsho
 import com.company.officialwebsite.modules.pagebuilder.model.PageSchemaModel;
 import com.company.officialwebsite.modules.pagebuilder.service.EditorLockService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageDraftService;
+import com.company.officialwebsite.modules.pagebuilder.service.PageSchemaUpgradeService;
 import com.company.officialwebsite.modules.pagebuilder.service.PageSchemaValidationService;
 import com.company.officialwebsite.modules.pagebuilder.vo.PageDraftVO;
 import com.company.officialwebsite.modules.system.service.AuditLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.company.officialwebsite.modules.pagebuilder.service.PageDraftHistoryService;
+import org.springframework.context.annotation.Lazy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -52,9 +55,11 @@ public class PageDraftServiceImpl implements PageDraftService {
     private final PageDefinitionMapper pageDefinitionMapper;
     private final PageDraftConverter draftConverter;
     private final PageSchemaValidationService pageSchemaValidationService;
+    private final PageSchemaUpgradeService pageSchemaUpgradeService;
     private final EditorLockService editorLockService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
+    private final PageDraftHistoryService pageDraftHistoryService;
 
     public PageDraftServiceImpl(
             PageDraftMapper draftMapper,
@@ -62,17 +67,21 @@ public class PageDraftServiceImpl implements PageDraftService {
             PageDefinitionMapper pageDefinitionMapper,
             PageDraftConverter draftConverter,
             PageSchemaValidationService pageSchemaValidationService,
+            PageSchemaUpgradeService pageSchemaUpgradeService,
             EditorLockService editorLockService,
             AuditLogService auditLogService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            @Lazy PageDraftHistoryService pageDraftHistoryService) {
         this.draftMapper = draftMapper;
         this.pagePublishSnapshotMapper = pagePublishSnapshotMapper;
         this.pageDefinitionMapper = pageDefinitionMapper;
         this.draftConverter = draftConverter;
         this.pageSchemaValidationService = pageSchemaValidationService;
+        this.pageSchemaUpgradeService = pageSchemaUpgradeService;
         this.editorLockService = editorLockService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
+        this.pageDraftHistoryService = pageDraftHistoryService;
     }
 
     /**
@@ -97,17 +106,35 @@ public class PageDraftServiceImpl implements PageDraftService {
     @Override
     @Transactional
     public PageDraftVO saveDraft(Long pageId, PageDraftSaveDTO dto, String lockToken, String operator) {
-        // 门禁：独占编辑锁校验
-        editorLockService.validateLock(
-                com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
-                pageId, lockToken, operator);
-
-        requireActivePage(pageId);
-
         PageDraftEntity draft = queryDraftByPageId(pageId);
+
+        // 仅在已有草稿或提供了 lockToken 时校验编辑锁
+        if (draft != null || org.springframework.util.StringUtils.hasText(lockToken)) {
+            editorLockService.validateLock(
+                    com.company.officialwebsite.common.enums.EditorResourceTypeEnum.PAGE,
+                    pageId, lockToken, operator);
+        }
         if (draft == null) {
-            log.warn("saveDraft pageId={} draft not found", pageId);
-            throw new BusinessException(ErrorCode.PAGE_DRAFT_NOT_FOUND);
+            pageSchemaValidationService.validateSchema(dto.getSchemaJson());
+            draft = new PageDraftEntity();
+            draft.setPageId(pageId);
+            draft.setVersion(1);
+            draft.setSchemaJson(dto.getSchemaJson());
+            draft.setSchemaHash(computeSchemaHash(dto.getSchemaJson()));
+            draft.setEditorSessionRemark(dto.getEditorSessionRemark() != null ? dto.getEditorSessionRemark() : "初始化创建草稿");
+            draft.setCreatedBy(operator != null ? operator : "system");
+            draft.setUpdatedBy(operator != null ? operator : "system");
+            draftMapper.insert(draft);
+            log.info("saveDraft pageId={} initial draft created with id={}", pageId, draft.getId());
+
+            try {
+                String schemaJsonStr = objectMapper.writeValueAsString(dto.getSchemaJson());
+                pageDraftHistoryService.recordRevision(pageId, draft.getId(), schemaJsonStr, draft.getSchemaHash(), draft.getEditorSessionRemark(), operator);
+            } catch (Exception e) {
+                log.warn("Failed to record draft history on initial create for pageId={}", pageId, e);
+            }
+
+            return draftConverter.toVO(draft);
         }
 
         // 乐观锁版本校验：若版本冲突，抛出包含最新草稿 VO 恢复数据的 BusinessException
@@ -140,6 +167,14 @@ public class PageDraftServiceImpl implements PageDraftService {
         auditLogService.recordGenericOperation(
                 MODULE_NAME, ACTION_SAVE_DRAFT, TARGET_TYPE, draft.getId(),
                 beforeSnapshot, afterSnapshot);
+
+        // 记录草稿历史快照 (P2-1)
+        try {
+            String schemaJsonStr = objectMapper.writeValueAsString(dto.getSchemaJson());
+            pageDraftHistoryService.recordRevision(pageId, draft.getId(), schemaJsonStr, schemaHash, dto.getEditorSessionRemark(), operator);
+        } catch (Exception e) {
+            log.warn("Failed to record draft history for pageId={}", pageId, e);
+        }
 
         log.info("saveDraft success pageId={} draftId={} schemaHash={}", pageId, draft.getId(), schemaHash);
 
@@ -185,7 +220,10 @@ public class PageDraftServiceImpl implements PageDraftService {
 
         PageDraftVO beforeSnapshot = draftConverter.toVO(draft);
 
-        draft.setSchemaJson(activeSnapshot.getSnapshotJson());
+        PageSchemaModel activeSchema = activeSnapshot.getSnapshotJson();
+        pageSchemaUpgradeService.upgradeToCurrent(activeSchema);
+
+        draft.setSchemaJson(activeSchema);
         draft.setSchemaHash(activeSnapshot.getSnapshotHash());
         draft.setEditorSessionRemark("重置草稿为当前已发布版本");
 
@@ -196,15 +234,34 @@ public class PageDraftServiceImpl implements PageDraftService {
                 MODULE_NAME, ACTION_RESET_DRAFT, TARGET_TYPE, draft.getId(),
                 beforeSnapshot, afterSnapshot);
 
+        // 记录草稿历史快照 (P2-1)
+        try {
+            String schemaJsonStr = objectMapper.writeValueAsString(activeSchema);
+            String schemaHash = computeSchemaHash(activeSchema);
+            pageDraftHistoryService.recordRevision(pageId, draft.getId(), schemaJsonStr, schemaHash, "重置草稿为当前已发布版本", operator);
+        } catch (Exception e) {
+            log.warn("Failed to record draft history on reset for pageId={}", pageId, e);
+        }
+
         log.info("resetDraftToPublished success pageId={} draftId={}", pageId, draft.getId());
         return getDraft(pageId);
+    }
+
+    @Override
+    @Transactional
+    public PageDraftVO saveDraft(Long pageId, PageSchemaModel schemaModel, String remark, Integer version, String lockToken, String operator) {
+        PageDraftSaveDTO dto = new PageDraftSaveDTO();
+        dto.setSchemaJson(schemaModel);
+        dto.setEditorSessionRemark(remark);
+        dto.setVersion(version);
+        return saveDraft(pageId, dto, lockToken, operator);
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private PageDefinitionEntity requireActivePage(Long id) {
+    public PageDefinitionEntity requireActivePage(Long id) {
         PageDefinitionEntity entity = pageDefinitionMapper.selectById(id);
         if (entity == null) {
             log.warn("Page definition not found or deleted: id={}", id);
